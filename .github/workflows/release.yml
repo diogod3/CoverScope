@@ -1,0 +1,83 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write
+  packages: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v7
+
+      - name: Set up .NET
+        uses: actions/setup-dotnet@v6
+        with:
+          dotnet-version: 10.0.x
+
+      - name: Validate tag and package version
+        shell: pwsh
+        run: |
+          [xml] $project = Get-Content src/DD3.CoverScope.Web/DD3.CoverScope.Web.csproj
+          $version = [string] $project.Project.PropertyGroup.Version
+          if ("v$version" -ne $env:GITHUB_REF_NAME) {
+            throw "Tag '$env:GITHUB_REF_NAME' does not match package version '$version'."
+          }
+          "PACKAGE_VERSION=$version" >> $env:GITHUB_ENV
+
+      - name: Restore
+        run: dotnet restore DD3.CoverScope.sln
+
+      - name: Build
+        run: dotnet build DD3.CoverScope.sln --configuration Release --no-restore
+
+      - name: Test
+        run: dotnet test DD3.CoverScope.sln --configuration Release --no-build
+
+      - name: Pack
+        run: dotnet pack src/DD3.CoverScope.Web/DD3.CoverScope.Web.csproj --configuration Release --no-build --output artifacts/packages
+
+      - name: Inspect package
+        shell: pwsh
+        run: |
+          $package = Get-ChildItem artifacts/packages/DD3.CoverScope.Tool.*.nupkg | Select-Object -First 1
+          ./scripts/Inspect-Package.ps1 -PackagePath $package.FullName
+
+      - name: Smoke-test installed tool
+        shell: pwsh
+        run: |
+          $package = Get-ChildItem artifacts/packages/DD3.CoverScope.Tool.*.nupkg | Select-Object -First 1
+          ./scripts/Smoke-Test.ps1 -PackagePath $package.FullName -Version $env:PACKAGE_VERSION
+
+      - name: Publish to GitHub Packages
+        shell: pwsh
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          $package = Get-ChildItem artifacts/packages/DD3.CoverScope.Tool.*.nupkg | Select-Object -First 1
+          dotnet nuget push $package.FullName --api-key $env:GITHUB_TOKEN --source https://nuget.pkg.github.com/diogod3/index.json --skip-duplicate
+
+      - name: Upload package artifact
+        uses: actions/upload-artifact@v7
+        with:
+          name: DD3.CoverScope.Tool-${{ env.PACKAGE_VERSION }}
+          path: artifacts/packages/*.nupkg
+          if-no-files-found: error
+
+      - name: Create prerelease
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: >-
+          gh release create "$GITHUB_REF_NAME"
+          artifacts/packages/*.nupkg
+          --prerelease
+          --generate-notes
+          --title "CoverScope $GITHUB_REF_NAME"
+          --verify-tag
