@@ -54,6 +54,16 @@ public sealed class SolutionFileBrowserTests : IDisposable
         Assert.Null(result.SelectedPath);
     }
 
+    [Fact]
+    public void Open_StartsFromConfiguredInvocationDirectory()
+    {
+        var configuredBrowser = new SolutionFileBrowser(directory);
+
+        var result = configuredBrowser.Open();
+
+        Assert.Equal(Path.GetFullPath(directory), result.DirectoryPath);
+    }
+
     public void Dispose()
     {
         try { Directory.Delete(directory, recursive: true); }
