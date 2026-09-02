@@ -5,6 +5,7 @@
     <AssemblyName>DD3.CoverScope.Web</AssemblyName>
     <OutputType>Exe</OutputType>
 
+    <IsPackable>true</IsPackable>
     <PackAsTool>true</PackAsTool>
     <ToolCommandName>coverscope</ToolCommandName>
     <PackageId>DD3.CoverScope.Tool</PackageId>
