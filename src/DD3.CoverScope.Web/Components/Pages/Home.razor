@@ -4,6 +4,7 @@
 @inject CoverageRunner Runner
 @inject CoverageSettingsStore SettingsStore
 @inject SolutionFileBrowser SolutionBrowser
+@inject CoverScopeLaunchContext LaunchContext
 @inject IJSRuntime JS
 
 <PageTitle>CoverScope · .NET coverage explorer and metrics</PageTitle>
@@ -495,7 +496,11 @@ else
     private int VisibleFileCount => ExplorerProjects.Sum(x => x.Namespaces.Sum(y => y.Files.Count));
     private int VisibleClassCount => ExplorerProjects.Sum(x => x.Namespaces.Sum(y => y.Files.Sum(z => z.Classes.Count)));
 
-    protected override async Task OnInitializedAsync() => settings = await SettingsStore.LoadAsync();
+    protected override async Task OnInitializedAsync()
+    {
+        settings = await SettingsStore.LoadAsync();
+        solutionPath = LaunchContext.InitialTargetPath ?? string.Empty;
+    }
 
     private void ShowMetrics()
     {

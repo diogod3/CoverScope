@@ -15,6 +15,12 @@ public sealed record SolutionSelectionResult(bool Success, string? SelectedPath,
 public sealed class SolutionFileBrowser
 {
     private static readonly string[] AllowedExtensions = [".sln", ".slnx", ".csproj", ".fsproj", ".vbproj"];
+    private readonly string initialDirectory;
+
+    public SolutionFileBrowser() : this(Environment.CurrentDirectory) { }
+
+    public SolutionFileBrowser(string initialDirectory) =>
+        this.initialDirectory = Path.GetFullPath(initialDirectory);
 
     public SolutionBrowserSnapshot Open(string? currentSelection = null) =>
         Browse(ResolveInitialDirectory(currentSelection));
@@ -53,7 +59,7 @@ public sealed class SolutionFileBrowser
     {
         var locations = new List<SolutionBrowserLocation>();
         AddLocation(locations, "Home", Environment.GetFolderPath(Environment.SpecialFolder.UserProfile));
-        AddLocation(locations, "CoverScope", Environment.CurrentDirectory);
+        AddLocation(locations, "Working directory", initialDirectory);
 
         try
         {
@@ -98,7 +104,7 @@ public sealed class SolutionFileBrowser
     internal static bool IsSupportedFile(string path) =>
         AllowedExtensions.Contains(Path.GetExtension(path), StringComparer.OrdinalIgnoreCase);
 
-    private static string ResolveInitialDirectory(string? currentSelection)
+    private string ResolveInitialDirectory(string? currentSelection)
     {
         if (!string.IsNullOrWhiteSpace(currentSelection))
         {
@@ -106,7 +112,7 @@ public sealed class SolutionFileBrowser
             {
                 var fullPath = Path.GetFullPath(currentSelection);
                 if (Directory.Exists(fullPath)) return fullPath;
-                if (File.Exists(fullPath)) return Path.GetDirectoryName(fullPath) ?? Environment.CurrentDirectory;
+                if (File.Exists(fullPath)) return Path.GetDirectoryName(fullPath) ?? initialDirectory;
             }
             catch (Exception ex) when (ex is ArgumentException or NotSupportedException or PathTooLongException)
             {
@@ -115,6 +121,7 @@ public sealed class SolutionFileBrowser
             }
         }
 
+        if (Directory.Exists(initialDirectory)) return initialDirectory;
         var home = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
         return Directory.Exists(home) ? home : Environment.CurrentDirectory;
     }

@@ -3,5 +3,28 @@
     <TargetFramework>net10.0</TargetFramework>
     <RootNamespace>DD3.CoverScope</RootNamespace>
     <AssemblyName>DD3.CoverScope.Web</AssemblyName>
+    <OutputType>Exe</OutputType>
+
+    <PackAsTool>true</PackAsTool>
+    <ToolCommandName>coverscope</ToolCommandName>
+    <PackageId>DD3.CoverScope.Tool</PackageId>
+    <Version>0.1.0-beta.1</Version>
+    <Authors>Diogo Duarte</Authors>
+    <Description>A cross-platform, local-first .NET code coverage explorer.</Description>
+    <PackageTags>dotnet-tool;code-coverage;coverlet;cobertura;blazor</PackageTags>
+    <PackageProjectUrl>https://github.com/diogod3/CoverScope</PackageProjectUrl>
+    <RepositoryUrl>https://github.com/diogod3/CoverScope</RepositoryUrl>
+    <RepositoryType>git</RepositoryType>
+    <PackageLicenseExpression>Apache-2.0</PackageLicenseExpression>
+    <PackageReadmeFile>README.md</PackageReadmeFile>
+    <PackageIcon>icon-512.png</PackageIcon>
+    <PackageOutputPath>$(MSBuildProjectDirectory)/../../artifacts/packages</PackageOutputPath>
   </PropertyGroup>
+
+  <ItemGroup>
+    <None Include="../../README.md" Pack="true" PackagePath="/" />
+    <None Include="../../LICENSE" Pack="true" PackagePath="/" />
+    <None Include="wwwroot/icon-512.png" Pack="true" PackagePath="/" />
+    <Content Update="wwwroot/**/*" Pack="true" PackagePath="tools/$(TargetFramework)/any/wwwroot/%(RecursiveDir)%(Filename)%(Extension)" />
+  </ItemGroup>
 </Project>
