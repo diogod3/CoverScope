@@ -54,8 +54,6 @@ try {
     $startInfo.FileName = $toolPath
     $startInfo.WorkingDirectory = $invocationDirectory
     $startInfo.UseShellExecute = $false
-    $startInfo.RedirectStandardOutput = $true
-    $startInfo.RedirectStandardError = $true
     $startInfo.ArgumentList.Add("Smoke.sln")
     $startInfo.ArgumentList.Add("--no-browser")
     $startInfo.ArgumentList.Add("--port")
@@ -69,10 +67,10 @@ try {
 
     $baseUrl = "http://127.0.0.1:$port"
     $started = $false
+    $lastProbeError = "No response received."
     for ($attempt = 0; $attempt -lt 60; $attempt++) {
         if ($process.HasExited) {
-            $stderr = $process.StandardError.ReadToEnd()
-            throw "CoverScope exited before it became ready. $stderr"
+            throw "CoverScope exited before it became ready with exit code $($process.ExitCode)."
         }
 
         try {
@@ -83,12 +81,13 @@ try {
             }
         }
         catch {
+            $lastProbeError = $_.Exception.Message
             Start-Sleep -Milliseconds 500
         }
     }
 
     if (-not $started) {
-        throw "CoverScope did not become ready at $baseUrl."
+        throw "CoverScope did not become ready at $baseUrl. Last probe error: $lastProbeError"
     }
 
     if ($home.Content -notmatch "CoverScope" -or $home.Content -notmatch "Smoke.sln") {
