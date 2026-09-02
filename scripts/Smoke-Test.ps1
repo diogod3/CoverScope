@@ -74,8 +74,8 @@ try {
         }
 
         try {
-            $home = Invoke-WebRequest -Uri "$baseUrl/" -UseBasicParsing -TimeoutSec 2
-            if ($home.StatusCode -eq 200) {
+            $homeResponse = Invoke-WebRequest -Uri "$baseUrl/" -UseBasicParsing -TimeoutSec 2
+            if ($homeResponse.StatusCode -eq 200) {
                 $started = $true
                 break
             }
@@ -90,7 +90,7 @@ try {
         throw "CoverScope did not become ready at $baseUrl. Last probe error: $lastProbeError"
     }
 
-    if ($home.Content -notmatch "CoverScope" -or $home.Content -notmatch "Smoke.sln") {
+    if ($homeResponse.Content -notmatch "CoverScope" -or $homeResponse.Content -notmatch "Smoke.sln") {
         throw "The home page did not contain the expected application and target text."
     }
 
