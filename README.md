@@ -114,4 +114,4 @@ TBD
 
 ## License
 
-Apache License 2.0 is the intended license. Until the repository includes a `LICENSE` file with finalized copyright attribution, no open-source license has been granted.
+CoverScope is licensed under the [Apache License 2.0](LICENSE).
