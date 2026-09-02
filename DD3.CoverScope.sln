@@ -1,0 +1,24 @@
+Microsoft Visual Studio Solution File, Format Version 12.00
+# Visual Studio Version 17
+VisualStudioVersion = 17.0.31903.59
+MinimumVisualStudioVersion = 10.0.40219.1
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "DD3.CoverScope.Web", "src\DD3.CoverScope.Web\DD3.CoverScope.Web.csproj", "{8E5A88B5-FCD5-42B8-A602-4D180FF95563}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "DD3.CoverScope.Tests", "tests\DD3.CoverScope.Tests\DD3.CoverScope.Tests.csproj", "{9C9AA48E-8DB1-40E5-802B-8414622FD318}"
+EndProject
+Global
+	GlobalSection(SolutionConfigurationPlatforms) = preSolution
+		Debug|Any CPU = Debug|Any CPU
+		Release|Any CPU = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(ProjectConfigurationPlatforms) = postSolution
+		{8E5A88B5-FCD5-42B8-A602-4D180FF95563}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{8E5A88B5-FCD5-42B8-A602-4D180FF95563}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{8E5A88B5-FCD5-42B8-A602-4D180FF95563}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{8E5A88B5-FCD5-42B8-A602-4D180FF95563}.Release|Any CPU.Build.0 = Release|Any CPU
+		{9C9AA48E-8DB1-40E5-802B-8414622FD318}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{9C9AA48E-8DB1-40E5-802B-8414622FD318}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{9C9AA48E-8DB1-40E5-802B-8414622FD318}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{9C9AA48E-8DB1-40E5-802B-8414622FD318}.Release|Any CPU.Build.0 = Release|Any CPU
+	EndGlobalSection
+EndGlobal

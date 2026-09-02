@@ -1,0 +1,7 @@
+<Project Sdk="Microsoft.NET.Sdk.Web">
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <RootNamespace>DD3.CoverScope</RootNamespace>
+    <AssemblyName>DD3.CoverScope.Web</AssemblyName>
+  </PropertyGroup>
+</Project>

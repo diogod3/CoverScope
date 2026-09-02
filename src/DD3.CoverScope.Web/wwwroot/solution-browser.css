@@ -1,0 +1,121 @@
+.solution-browser-backdrop {
+    position: fixed;
+    inset: 0;
+    z-index: 100;
+    display: grid;
+    place-items: center;
+    padding: 24px;
+    background: rgba(5, 5, 9, .76);
+    backdrop-filter: blur(8px);
+}
+
+.solution-browser {
+    width: min(780px, 100%);
+    height: min(680px, calc(100vh - 48px));
+    display: grid;
+    grid-template-rows: auto auto auto auto 1fr auto;
+    overflow: hidden;
+    background: var(--panel);
+    border: 1px solid #393649;
+    border-radius: 16px;
+    box-shadow: 0 28px 100px rgba(0, 0, 0, .55);
+}
+
+.solution-browser header {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    padding: 22px 24px 18px;
+    border-bottom: 1px solid var(--line);
+}
+
+.solution-browser h2 { margin: 7px 0 0; font-size: 1.25rem; }
+.browser-close { border: 0; background: none; color: var(--muted); font-size: 1.7rem; line-height: 1; cursor: pointer; }
+.browser-close:hover { color: var(--text); }
+
+.browser-locations {
+    display: flex;
+    gap: 8px;
+    overflow: auto;
+    padding: 12px 18px;
+    border-bottom: 1px solid var(--line);
+}
+
+.browser-locations button,
+.browser-path button,
+.solution-browser footer button {
+    padding: 8px 11px;
+    color: #c6c2d4;
+    white-space: nowrap;
+    cursor: pointer;
+    background: #1d1c27;
+    border: 1px solid #353243;
+    border-radius: 7px;
+}
+
+.browser-locations button:hover,
+.browser-path button:hover,
+.solution-browser footer button:hover { color: var(--text); border-color: #625a91; }
+
+.browser-path {
+    display: grid;
+    grid-template-columns: auto 1fr auto;
+    gap: 8px;
+    padding: 12px 18px;
+    border-bottom: 1px solid var(--line);
+}
+
+.browser-path input {
+    min-width: 0;
+    padding: 9px 11px;
+    color: var(--text);
+    font: 12px Consolas, monospace;
+    background: #101016;
+    border: 1px solid #333140;
+    border-radius: 7px;
+}
+
+.browser-path button:disabled { opacity: .35; cursor: default; }
+.browser-error { margin: 10px 18px 0; padding: 9px 11px; color: #ff8c9f; font-size: .75rem; background: rgba(255, 100, 124, .06); border: 1px solid rgba(255, 100, 124, .3); border-radius: 7px; }
+.browser-entries { overflow: auto; padding: 8px; }
+
+.browser-entry {
+    width: 100%;
+    display: grid;
+    grid-template-columns: 24px minmax(0, 1fr) auto;
+    align-items: center;
+    gap: 8px;
+    padding: 10px 12px;
+    color: #d4d0df;
+    text-align: left;
+    cursor: pointer;
+    background: none;
+    border: 0;
+    border-radius: 7px;
+}
+
+.browser-entry:hover { background: #22212d; }
+.browser-entry-icon { color: var(--violet); font-size: .72rem; }
+.browser-entry.directory .browser-entry-icon { color: var(--amber); }
+.browser-entry span:nth-child(2) { overflow: hidden; font-size: .8rem; text-overflow: ellipsis; white-space: nowrap; }
+.browser-entry small { padding: 3px 5px; color: #777386; font: 9px Consolas, monospace; background: #292733; border-radius: 4px; }
+.browser-empty { height: 100%; min-height: 180px; display: grid; place-items: center; color: var(--muted); font-size: .78rem; }
+
+.solution-browser footer {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 16px;
+    padding: 13px 18px;
+    color: var(--muted);
+    font-size: .7rem;
+    border-top: 1px solid var(--line);
+}
+
+@media (max-width: 650px) {
+    .solution-browser-backdrop { padding: 8px; }
+    .solution-browser { height: calc(100vh - 16px); }
+    .browser-locations, .browser-path { padding: 10px; }
+    .solution-browser footer { justify-content: flex-end; }
+    .solution-browser footer span { display: none; }
+}

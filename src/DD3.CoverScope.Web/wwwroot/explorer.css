@@ -1,0 +1,304 @@
+.exclusion-panel {
+    margin-top: 18px;
+    border-top: 1px solid var(--line);
+}
+
+.exclusion-panel > summary {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 16px 2px 2px;
+    color: #c8c4d7;
+    cursor: pointer;
+    font-size: .76rem;
+    font-weight: 700;
+    list-style: none;
+}
+
+.exclusion-panel > summary small {
+    color: var(--muted);
+    font-size: .64rem;
+    font-weight: 400;
+}
+
+.exclusion-grid {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 14px;
+    padding-top: 16px;
+}
+
+.exclusion-grid label {
+    display: flex;
+    flex-direction: column;
+    gap: 7px;
+    color: #bbb8cb;
+    font-size: .7rem;
+    font-weight: 600;
+}
+
+.exclusion-grid label small {
+    color: #706d7e;
+    font-size: .6rem;
+    font-weight: 400;
+}
+
+.exclusion-grid input[type="text"],
+.exclusion-grid input:not([type]) {
+    min-width: 0;
+    padding: 10px 11px;
+    border: 1px solid #333140;
+    border-radius: 7px;
+    outline: none;
+    background: #101016;
+    color: var(--text);
+}
+
+.exclusion-grid .check-option {
+    grid-column: 1 / -1;
+    flex-direction: row;
+    align-items: center;
+}
+
+.check-option input {
+    accent-color: var(--violet);
+}
+
+.import-actions {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    margin-bottom: 18px;
+}
+
+.file-upload {
+    position: relative;
+    display: inline-flex;
+    overflow: hidden;
+    padding: 10px 14px;
+    border: 1px solid #423d64;
+    border-radius: 8px;
+    color: #c9c2ff;
+    cursor: pointer;
+    font-size: .72rem;
+    font-weight: 700;
+}
+
+.file-upload input {
+    position: absolute;
+    inset: 0;
+    opacity: 0;
+    cursor: pointer;
+}
+
+.or-divider {
+    color: #686576;
+    font-size: .65rem;
+}
+
+.path-field {
+    display: flex;
+    min-width: 0;
+    flex-direction: column;
+    gap: 8px;
+    color: #bbb8cb;
+    font-size: .74rem;
+    font-weight: 600;
+}
+
+.path-input-row {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    gap: 8px;
+}
+
+.browse-button {
+    padding: 0 15px;
+    border: 1px solid #423d64;
+    border-radius: 8px;
+    background: #1d1a2c;
+    color: #c9c2ff;
+    cursor: pointer;
+    font-size: .72rem;
+    font-weight: 700;
+}
+
+.browse-button:hover { border-color: #685ca7; background: #252039; }
+.browse-button:disabled { opacity: .55; cursor: wait; }
+
+.hierarchy-explorer .explorer-toolbar {
+    padding-bottom: 14px;
+}
+
+.toolbar-title {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+}
+
+.toolbar-title span {
+    color: var(--muted);
+    font-size: .62rem;
+}
+
+.filter-row {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 8px;
+    margin-top: 9px;
+}
+
+.filter-row label {
+    color: #716e80;
+    font-size: .58rem;
+    text-transform: uppercase;
+    letter-spacing: .05em;
+}
+
+.filter-row select {
+    display: block;
+    width: 100%;
+    margin-top: 4px;
+    padding: 7px 8px;
+    border: 1px solid #333140;
+    border-radius: 6px;
+    outline: none;
+    background: #101016;
+    color: #c8c4d7;
+    font-size: .66rem;
+    text-transform: none;
+    letter-spacing: 0;
+}
+
+.hierarchy-explorer .tree-level {
+    border: 0;
+}
+
+.hierarchy-explorer .tree-row {
+    display: flex;
+    width: 100%;
+    min-height: 42px;
+    align-items: center;
+    justify-content: space-between;
+    gap: 9px;
+    padding: 7px 12px;
+    border: 0;
+    border-bottom: 1px solid #211f2a;
+    background: transparent;
+    color: #cbc8d8;
+    cursor: pointer;
+    text-align: left;
+    list-style: none;
+}
+
+.hierarchy-explorer .tree-row::-webkit-details-marker {
+    display: none;
+}
+
+.hierarchy-explorer .tree-row:hover,
+.hierarchy-explorer .tree-row.selected {
+    background: #20202b;
+}
+
+.hierarchy-explorer .tree-row.selected {
+    box-shadow: inset 2px 0 var(--violet);
+}
+
+.hierarchy-explorer .tree-row.active-parent {
+    background: rgba(118, 92, 255, .07);
+}
+
+.tree-row > span:first-child {
+    display: flex;
+    min-width: 0;
+    align-items: center;
+    gap: 8px;
+}
+
+.namespace-row { padding-left: 24px !important; }
+.file-tree-row { padding-left: 39px !important; }
+.class-row { padding-left: 55px !important; }
+.method-row { padding-left: 73px !important; }
+
+.node-icon {
+    display: inline-grid;
+    width: 19px;
+    height: 19px;
+    flex: 0 0 19px;
+    place-items: center;
+    border-radius: 5px;
+    font: 600 8px Consolas, monospace;
+}
+
+.project-icon { background: rgba(118, 92, 255, .18); color: #9f90ff; }
+.namespace-icon { background: rgba(231, 105, 183, .14); color: #ed8ac6; }
+.file-node-icon { background: rgba(82, 145, 255, .15); color: #83b3ff; }
+.class-icon { background: rgba(53, 198, 164, .14); color: #5fd4b8; }
+.method-icon { background: #292735; color: #aaa6b8; }
+
+.node-label {
+    overflow: hidden;
+    font-size: .69rem;
+    font-weight: 600;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.node-label small {
+    display: block;
+    overflow: hidden;
+    margin-top: 2px;
+    color: #696677;
+    font: 8px Consolas, monospace;
+    text-overflow: ellipsis;
+}
+
+.partial-tag {
+    display: inline-block;
+    margin-right: 4px;
+    padding: 1px 4px;
+    border: 1px solid rgba(53, 198, 164, .24);
+    border-radius: 3px;
+    color: #5fd4b8;
+    font-style: normal;
+    line-height: 1.2;
+}
+
+.source-header {
+    height: 86px;
+}
+
+.source-selection {
+    margin-top: 4px;
+    color: #aaa5bd;
+    font: 9px Consolas, monospace;
+}
+
+.source-panel .code-table {
+    height: calc(100% - 86px);
+}
+
+.workspace {
+    grid-template-columns: 420px 1fr;
+}
+
+.tree-empty {
+    padding: 34px 20px;
+    color: var(--muted);
+    font-size: .72rem;
+    text-align: center;
+}
+
+.code-line.target {
+    animation: target-pulse 1.6s ease-out;
+    box-shadow: inset 0 0 0 1px rgba(118, 92, 255, .7);
+}
+
+@keyframes target-pulse {
+    from { background-color: rgba(118, 92, 255, .35); }
+}
+
+@media (max-width: 900px) {
+    .exclusion-grid { grid-template-columns: 1fr; }
+    .workspace { grid-template-columns: 330px 1fr; }
+}

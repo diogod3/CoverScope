@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-label="CoverScope">
+  <style>
+    .bars { fill: #111827; }
+    @media (prefers-color-scheme: dark) { .bars { fill: #f6f4fa; } }
+  </style>
+  <path fill="#9600E7" d="M36 6.3095A26 26 0 1 0 55.564 42.9881L48.3135 39.6071A18 18 0 1 1 36 14.4501Z"/>
+  <path fill="#2F1CD8" d="M38.5 6.8256A26 26 0 0 1 54.9566 19.7937L47.8931 23.5495A18 18 0 0 0 38.5 15.2146Z"/>
+  <path class="bars" d="M21 35h6v10h-6zM29 24h6v21h-6zM37 30h6v15h-6z"/>
+</svg>
