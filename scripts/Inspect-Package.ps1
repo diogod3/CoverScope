@@ -13,7 +13,6 @@ try {
         "DD3.CoverScope.Tool.nuspec",
         "README.md",
         "LICENSE",
-        "icon-512.png",
         "tools/net10.0/any/DotnetToolSettings.xml",
         "tools/net10.0/any/DD3.CoverScope.Web.dll",
         "tools/net10.0/any/DD3.CoverScope.Web.deps.json",

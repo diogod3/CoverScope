@@ -18,14 +18,13 @@
     <RepositoryType>git</RepositoryType>
     <PackageLicenseExpression>Apache-2.0</PackageLicenseExpression>
     <PackageReadmeFile>README.md</PackageReadmeFile>
-    <PackageIcon>icon-512.png</PackageIcon>
+    <PackageIcon>tools/net10.0/any/wwwroot/icon-512.png</PackageIcon>
     <PackageOutputPath>$(MSBuildProjectDirectory)/../../artifacts/packages</PackageOutputPath>
   </PropertyGroup>
 
   <ItemGroup>
     <None Include="../../README.md" Pack="true" PackagePath="/" />
     <None Include="../../LICENSE" Pack="true" PackagePath="/" />
-    <None Include="wwwroot/icon-512.png" Pack="true" PackagePath="icon-512.png" />
     <Content Update="wwwroot/**/*" Pack="true" PackagePath="tools/$(TargetFramework)/any/wwwroot/%(RecursiveDir)%(Filename)%(Extension)" />
   </ItemGroup>
 </Project>
