@@ -25,7 +25,7 @@
   <ItemGroup>
     <None Include="../../README.md" Pack="true" PackagePath="/" />
     <None Include="../../LICENSE" Pack="true" PackagePath="/" />
-    <None Include="wwwroot/icon-512.png" Pack="true" PackagePath="/" />
+    <None Include="wwwroot/icon-512.png" Pack="true" PackagePath="icon-512.png" />
     <Content Update="wwwroot/**/*" Pack="true" PackagePath="tools/$(TargetFramework)/any/wwwroot/%(RecursiveDir)%(Filename)%(Extension)" />
   </ItemGroup>
 </Project>
