@@ -214,7 +214,7 @@ try {
 
         $initialRunCount = $runDirectories.Count
         if (-not $firstBrowser.HasExited) {
-            $firstBrowser.Kill($true)
+            $firstBrowser.Kill()
             if (-not $firstBrowser.WaitForExit(10000)) {
                 throw "The first headless browser did not stop within 10 seconds."
             }
@@ -236,7 +236,7 @@ try {
 finally {
     foreach ($browserProcess in $browserProcesses) {
         if ($null -ne $browserProcess -and -not $browserProcess.HasExited) {
-            $browserProcess.Kill($true)
+            $browserProcess.Kill()
             if (-not $browserProcess.WaitForExit(10000)) {
                 Write-Warning "A headless browser process did not stop within 10 seconds."
             }
