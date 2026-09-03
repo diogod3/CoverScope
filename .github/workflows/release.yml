@@ -30,7 +30,12 @@ jobs:
           if ("v$version" -ne $env:GITHUB_REF_NAME) {
             throw "Tag '$env:GITHUB_REF_NAME' does not match package version '$version'."
           }
+          $releaseNotes = "docs/releases/$($env:GITHUB_REF_NAME).md"
+          if (-not (Test-Path $releaseNotes)) {
+            throw "Release notes were not found at '$releaseNotes'."
+          }
           "PACKAGE_VERSION=$version" >> $env:GITHUB_ENV
+          "RELEASE_NOTES=$releaseNotes" >> $env:GITHUB_ENV
 
       - name: Restore
         run: dotnet restore DD3.CoverScope.sln
@@ -78,6 +83,6 @@ jobs:
           gh release create "$GITHUB_REF_NAME"
           artifacts/packages/*.nupkg
           --prerelease
-          --generate-notes
+          --notes-file "$RELEASE_NOTES"
           --title "CoverScope $GITHUB_REF_NAME"
           --verify-tag
