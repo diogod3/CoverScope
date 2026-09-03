@@ -8,6 +8,8 @@ namespace DD3.CoverScope;
 
 public sealed record CoverScopeLaunchContext(string InvocationDirectory, string? InitialTargetPath);
 
+internal sealed record CoverScopeStartupUrls(string Preferred, string Fallback);
+
 internal static class CoverScopeHost
 {
     public static async Task<int> RunAsync(string[] args)
@@ -95,12 +97,8 @@ internal static class CoverScopeHost
         try
         {
             await app.StartAsync();
-            var url = ResolveBoundUrl(app);
-            Console.WriteLine($"CoverScope is running at {url}");
-            Console.WriteLine("Press Ctrl+C to stop.");
-
-            if (options.OpenBrowser)
-                TryOpenBrowser(url);
+            var urls = CreateStartupUrls(ResolveBoundUrl(app));
+            AnnounceStartup(urls, options.OpenBrowser, OpenBrowser, Console.Out, Console.Error);
 
             await app.WaitForShutdownAsync();
             return 0;
@@ -134,15 +132,41 @@ internal static class CoverScopeHost
             ?? app.Urls.Single();
     }
 
-    private static void TryOpenBrowser(string url)
+    internal static CoverScopeStartupUrls CreateStartupUrls(string boundUrl)
     {
+        var fallback = new Uri(boundUrl).GetLeftPart(UriPartial.Authority);
+        var preferred = new UriBuilder(fallback)
+        {
+            Host = "coverscope.localhost"
+        }.Uri.GetLeftPart(UriPartial.Authority);
+
+        return new(preferred, fallback);
+    }
+
+    internal static void AnnounceStartup(
+        CoverScopeStartupUrls urls,
+        bool openBrowser,
+        Action<string> browserLauncher,
+        TextWriter output,
+        TextWriter error)
+    {
+        output.WriteLine($"CoverScope is running at {urls.Preferred}");
+        output.WriteLine($"Loopback fallback: {urls.Fallback}");
+        output.WriteLine("Press Ctrl+C to stop.");
+
+        if (!openBrowser)
+            return;
+
         try
         {
-            Process.Start(new ProcessStartInfo(url) { UseShellExecute = true });
+            browserLauncher(urls.Preferred);
         }
         catch (Exception ex) when (ex is InvalidOperationException or System.ComponentModel.Win32Exception)
         {
-            Console.Error.WriteLine($"CoverScope could not open the browser automatically: {ex.Message}");
+            error.WriteLine($"CoverScope could not open the browser automatically: {ex.Message}");
         }
     }
+
+    private static void OpenBrowser(string url) =>
+        Process.Start(new ProcessStartInfo(url) { UseShellExecute = true });
 }
