@@ -64,6 +64,7 @@ internal static class CoverScopeHost
             .AddRazorComponents()
             .AddInteractiveServerComponents();
         builder.Services.AddSingleton(new CoverScopeLaunchContext(options.InvocationDirectory, options.TargetPath));
+        builder.Services.AddSingleton<StartupCoverageCoordinator>();
         builder.Services.AddSingleton(new SolutionFileBrowser(options.InvocationDirectory));
         builder.Services.AddSingleton<CoberturaParser>();
         builder.Services.AddSingleton<CoberturaReportMerger>();
