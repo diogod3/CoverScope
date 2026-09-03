@@ -37,7 +37,7 @@ public sealed class StartupCoverageCoordinatorTests
             new CoverScopeLaunchContext(Path.GetTempPath(), Path.GetFullPath("Demo.sln")));
         using var gate = new ManualResetEventSlim();
         var attempts = Enumerable.Range(0, 32)
-            .Select(_ => Task.Run(() =>
+            .Select(index => Task.Run(() =>
             {
                 gate.Wait();
                 return coordinator.TryBegin(out _);
