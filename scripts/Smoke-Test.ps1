@@ -239,6 +239,7 @@ finally {
         }
         else {
             $process.Kill($true)
+            $process.WaitForExit()
         }
     }
 
@@ -247,6 +248,11 @@ finally {
     }
 
     if (Test-Path $root) {
-        Remove-Item -Path $root -Recurse -Force
+        try {
+            Remove-Item -Path $root -Recurse -Force
+        }
+        catch {
+            Write-Warning "Temporary smoke-test files could not be removed: $($_.Exception.Message)"
+        }
     }
 }
