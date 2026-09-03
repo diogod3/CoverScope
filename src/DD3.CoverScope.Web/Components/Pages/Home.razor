@@ -4,6 +4,7 @@
 @inject CoverageRunner Runner
 @inject CoverageSettingsStore SettingsStore
 @inject SolutionFileBrowser SolutionBrowser
+@inject CoverageWorkspaceProjectionCache Projections
 @inject CoverScopeLaunchContext LaunchContext
 @inject IJSRuntime JS
 
@@ -295,9 +296,7 @@
         </button>
     }
 
-    @if (workspaceMode == WorkspaceMode.Explorer)
-    {
-        <section class="workspace">
+    <section class="workspace" hidden="@(workspaceMode != WorkspaceMode.Explorer)">
         <aside class="explorer hierarchy-explorer">
             <div class="explorer-toolbar">
                 <div class="toolbar-title"><h3>Coverage explorer</h3><span>@VisibleFileCount files · @VisibleClassCount classes</span></div>
@@ -305,17 +304,17 @@
                 <div class="filter-row">
                     <label>Show
                         <select @bind="coverageFilter">
-                            <option value="@CoverageFilter.All">Everything</option>
-                            <option value="@CoverageFilter.Gaps">With gaps</option>
-                            <option value="@CoverageFilter.BelowEighty">Below 80%</option>
-                            <option value="@CoverageFilter.Untested">Untested</option>
+                            <option value="@ExplorerCoverageFilter.All">Everything</option>
+                            <option value="@ExplorerCoverageFilter.Gaps">With gaps</option>
+                            <option value="@ExplorerCoverageFilter.BelowEighty">Below 80%</option>
+                            <option value="@ExplorerCoverageFilter.Untested">Untested</option>
                         </select>
                     </label>
                     <label>Sort
                         <select @bind="sortMode">
-                            <option value="@SortMode.Name">Name</option>
-                            <option value="@SortMode.Lowest">Lowest coverage</option>
-                            <option value="@SortMode.Highest">Highest coverage</option>
+                            <option value="@ExplorerSortMode.Name">Name</option>
+                            <option value="@ExplorerSortMode.Lowest">Lowest coverage</option>
+                            <option value="@ExplorerSortMode.Highest">Highest coverage</option>
                         </select>
                     </label>
                 </div>
@@ -430,11 +429,8 @@
             }
         </article>
         </section>
-    }
-    else
-    {
-        <MetricsDashboard Report="report" OnOpenClass="OpenMetricClass" />
-    }
+
+    <MetricsDashboard Report="report" IsVisible="@(workspaceMode == WorkspaceMode.Metrics)" OnOpenClass="OpenMetricClass" />
 }
 else
 {
@@ -459,13 +455,11 @@ else
     private const long MaxReportBytes = 50 * 1024 * 1024;
     private enum Mode { Run, Import }
     private enum WorkspaceMode { Explorer, Metrics }
-    private enum SortMode { Name, Lowest, Highest }
-    private enum CoverageFilter { All, Gaps, BelowEighty, Untested }
 
     private Mode mode = Mode.Run;
     private WorkspaceMode workspaceMode = WorkspaceMode.Metrics;
-    private SortMode sortMode = SortMode.Lowest;
-    private CoverageFilter coverageFilter = CoverageFilter.All;
+    private ExplorerSortMode sortMode = ExplorerSortMode.Lowest;
+    private ExplorerCoverageFilter coverageFilter = ExplorerCoverageFilter.All;
     private CoverageSettings settings = new();
     private string solutionPath = string.Empty;
     private string reportPath = string.Empty;
@@ -492,9 +486,11 @@ else
     private List<SourceLine> sourceLines = [];
     private int targetLine;
 
-    private IReadOnlyList<ExplorerProject> ExplorerProjects => BuildExplorer();
-    private int VisibleFileCount => ExplorerProjects.Sum(x => x.Namespaces.Sum(y => y.Files.Count));
-    private int VisibleClassCount => ExplorerProjects.Sum(x => x.Namespaces.Sum(y => y.Files.Sum(z => z.Classes.Count)));
+    private ExplorerProjection Explorer =>
+        Projections.GetExplorer(report, filter, coverageFilter, sortMode);
+    private IReadOnlyList<ExplorerProject> ExplorerProjects => Explorer.Projects;
+    private int VisibleFileCount => Explorer.FileCount;
+    private int VisibleClassCount => Explorer.ClassCount;
 
     protected override async Task OnInitializedAsync()
     {
@@ -785,7 +781,7 @@ else
         if (classItem is null) return;
         workspaceMode = WorkspaceMode.Explorer;
         filter = row.FullName;
-        coverageFilter = CoverageFilter.All;
+        coverageFilter = ExplorerCoverageFilter.All;
         await SelectClass(row.Project, classItem);
     }
 
@@ -801,94 +797,10 @@ else
         if (targetLine > 0) await JS.InvokeVoidAsync("CoverScope.scrollToLine", $"line-{targetLine}");
     }
 
-    private IReadOnlyList<ExplorerProject> BuildExplorer()
+    private void ResetExplorerExpansion()
     {
-        if (report is null) return [];
-        var projects = new List<ExplorerProject>();
-        foreach (var project in report.Packages)
-        {
-            var projectTextMatch = Matches(project.Name);
-            var partialClassNames = project.Namespaces
-                .SelectMany(x => x.Classes)
-                .GroupBy(x => x.FullName, StringComparer.OrdinalIgnoreCase)
-                .Where(x => x.Select(y => y.RelativePath).Distinct(StringComparer.OrdinalIgnoreCase).Count() > 1)
-                .Select(x => x.Key)
-                .ToHashSet(StringComparer.OrdinalIgnoreCase);
-            var namespaces = new List<ExplorerNamespace>();
-            foreach (var namespaceItem in project.Namespaces)
-            {
-                var namespaceTextMatch = projectTextMatch || Matches(namespaceItem.Name);
-                var classes = new List<ExplorerClass>();
-                foreach (var classItem in namespaceItem.Classes)
-                {
-                    var classTextMatch = namespaceTextMatch || Matches(classItem.Name) || Matches(classItem.FullName) || Matches(classItem.RelativePath);
-                    var methods = Sort(classItem.Methods
-                        .Where(method => (classTextMatch || Matches(method.Name) || Matches(method.Signature)) && Passes(method.Lines)),
-                        x => x.Name,
-                        x => x.Lines).ToArray();
-                    if ((classTextMatch && Passes(classItem.LineMetric)) || methods.Length > 0)
-                        classes.Add(new ExplorerClass(classItem, methods, partialClassNames.Contains(classItem.FullName)));
-                }
-                var files = classes
-                    .GroupBy(x => x.Class.RelativePath, StringComparer.OrdinalIgnoreCase)
-                    .Select(group =>
-                    {
-                        var file = project.Files.First(x => string.Equals(x.RelativePath, group.Key, StringComparison.OrdinalIgnoreCase));
-                        var fileClasses = Sort(group, x => x.Class.Name, x => x.Class.LineMetric).ToArray();
-                        return new ExplorerFile(file, fileClasses, LineMetric(fileClasses.Select(x => x.Class)));
-                    });
-                var sortedFiles = Sort(files, x => x.File.RelativePath, x => x.LineMetric).ToArray();
-                if (sortedFiles.Length > 0)
-                    namespaces.Add(new ExplorerNamespace(namespaceItem, sortedFiles));
-            }
-            if (namespaces.Count > 0)
-                projects.Add(new ExplorerProject(project, Sort(namespaces, x => x.Namespace.Name, x => x.Namespace.LineMetric).ToArray()));
-        }
-        return Sort(projects, x => x.Project.Name, x => x.Project.LineMetric).ToArray();
+        // Expansion is represented by the native <details> elements. Keeping the
+        // Explorer mounted preserves their browser state across workspace switches.
     }
 
-    private bool Matches(string value) => string.IsNullOrWhiteSpace(filter)
-        || value.Contains(filter.Trim(), StringComparison.OrdinalIgnoreCase);
-
-    private static string FileDirectory(string relativePath)
-    {
-        var directory = Path.GetDirectoryName(relativePath);
-        return string.IsNullOrWhiteSpace(directory) ? "project root" : directory;
-    }
-
-    private static CoverageMetric LineMetric(IEnumerable<ClassCoverage> classes)
-    {
-        var lines = classes
-            .SelectMany(x => x.Lines)
-            .GroupBy(x => x.Number)
-            .Select(x => x.Any(y => y.IsCovered));
-        var total = 0;
-        var covered = 0;
-        foreach (var isCovered in lines)
-        {
-            total++;
-            if (isCovered) covered++;
-        }
-        return new CoverageMetric(covered, total);
-    }
-
-    private bool Passes(CoverageMetric metric) => coverageFilter switch
-    {
-        CoverageFilter.Gaps => metric.HasGaps,
-        CoverageFilter.BelowEighty => metric.Total > 0 && metric.Percent < 80,
-        CoverageFilter.Untested => metric.Total > 0 && metric.Covered == 0,
-        _ => true
-    };
-
-    private IEnumerable<T> Sort<T>(IEnumerable<T> items, Func<T, string> name, Func<T, CoverageMetric> metric) => sortMode switch
-    {
-        SortMode.Lowest => items.OrderBy(x => metric(x).Percent).ThenBy(name, StringComparer.OrdinalIgnoreCase),
-        SortMode.Highest => items.OrderByDescending(x => metric(x).Percent).ThenBy(name, StringComparer.OrdinalIgnoreCase),
-        _ => items.OrderBy(name, StringComparer.OrdinalIgnoreCase)
-    };
-
-    private sealed record ExplorerProject(PackageCoverage Project, IReadOnlyList<ExplorerNamespace> Namespaces);
-    private sealed record ExplorerNamespace(NamespaceCoverage Namespace, IReadOnlyList<ExplorerFile> Files);
-    private sealed record ExplorerFile(FileCoverage File, IReadOnlyList<ExplorerClass> Classes, CoverageMetric LineMetric);
-    private sealed record ExplorerClass(ClassCoverage Class, IReadOnlyList<MethodCoverage> Methods, bool IsPartial);
 }
