@@ -5,6 +5,7 @@
 @inject CoverageSettingsStore SettingsStore
 @inject SolutionFileBrowser SolutionBrowser
 @inject CoverageWorkspaceProjectionCache Projections
+@inject StartupCoverageCoordinator StartupCoverage
 @inject CoverScopeLaunchContext LaunchContext
 @inject IJSRuntime JS
 
@@ -516,6 +517,19 @@ else
         solutionPath = LaunchContext.InitialTargetPath ?? string.Empty;
     }
 
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        // OnAfterRenderAsync is not called during static prerendering. The
+        // process-scoped claim also prevents refreshes or additional circuits
+        // from starting the explicit target more than once.
+        if (!firstRender || !StartupCoverage.TryBegin(out var targetPath))
+            return;
+
+        solutionPath = targetPath!;
+        await RunCoverage();
+        await InvokeAsync(StateHasChanged);
+    }
+
     private void ShowMetrics()
     {
         if (report is null) return;
@@ -612,6 +626,9 @@ else
 
     private async Task RunCoverage()
     {
+        if (isBusy || isPickingSolution || string.IsNullOrWhiteSpace(solutionPath))
+            return;
+
         isBusy = true;
         mode = Mode.Run;
         statusMessage = null;
