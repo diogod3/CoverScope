@@ -268,7 +268,13 @@
     </div>
 }
 
-@if (report is not null)
+@if (collectionState.IsActive)
+{
+    <CollectionProgress Phase="collectionState.Phase"
+                        StartedAt="collectionState.StartedAt"
+                        TargetPath="solutionPath" />
+}
+else if (report is not null)
 {
     <section class="workspace-header">
         <div>
@@ -468,6 +474,7 @@ else
 
 @code {
     private const long MaxReportBytes = 50 * 1024 * 1024;
+    private readonly CoverageCollectionState collectionState = new();
     private enum Mode { Run, Import }
     private enum WorkspaceMode { Explorer, Metrics }
 
@@ -631,14 +638,24 @@ else
 
         isBusy = true;
         mode = Mode.Run;
+        isSetupOpen = false;
         statusMessage = null;
         runOutput = null;
         lastRunOutcome = null;
         testSummary = null;
+        collectionState.Start();
+        await InvokeAsync(StateHasChanged);
+
+        var progress = new Progress<CoverageCollectionPhase>(phase =>
+        {
+            if (collectionState.Advance(phase))
+                StateHasChanged();
+        });
+
         try
         {
             await SettingsStore.SaveAsync(settings);
-            var result = await Runner.RunAsync(solutionPath, settings);
+            var result = await Runner.RunAsync(solutionPath, settings, progress: progress);
             statusMessage = result.Message;
             statusIsError = result.Outcome != CoverageRunOutcome.Succeeded;
             runOutput = result.Output;
@@ -649,6 +666,8 @@ else
             {
                 reportPath = result.ReportPath;
                 sourceRoot = Path.GetDirectoryName(Path.GetFullPath(solutionPath)) ?? string.Empty;
+                collectionState.Advance(CoverageCollectionPhase.BuildingMetrics);
+                await InvokeAsync(StateHasChanged);
                 await LoadReport(result.Outcome == CoverageRunOutcome.TestsFailed);
             }
             else
@@ -661,10 +680,15 @@ else
         {
             statusMessage = ex.Message;
             statusIsError = true;
+            lastRunOutcome = CoverageRunOutcome.ExecutionFailed;
             mode = Mode.Run;
             isSetupOpen = true;
         }
-        finally { isBusy = false; }
+        finally
+        {
+            isBusy = false;
+            collectionState.Complete(lastRunOutcome ?? CoverageRunOutcome.ExecutionFailed);
+        }
     }
 
     private Task OpenReport()
