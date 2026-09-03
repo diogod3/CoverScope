@@ -12,6 +12,7 @@ $toolDirectory = Join-Path $root "tool"
 $invocationDirectory = Join-Path $root "workspace"
 $nugetConfig = Join-Path $root "NuGet.Config"
 $process = $null
+$browserProcesses = @()
 
 try {
     New-Item -ItemType Directory -Path $toolDirectory, $invocationDirectory | Out-Null
@@ -106,9 +107,95 @@ try {
         }
     }
 
+    $browserCandidates = @()
+    if ($IsWindows) {
+        $browserCandidates += Join-Path $env:ProgramFiles "Google\Chrome\Application\chrome.exe"
+        if ($null -ne ${env:ProgramFiles(x86)}) {
+            $browserCandidates += Join-Path ${env:ProgramFiles(x86)} "Google\Chrome\Application\chrome.exe"
+        }
+    }
+    elseif ($IsMacOS) {
+        $browserCandidates += "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome"
+        $browserCandidates += "/Applications/Chromium.app/Contents/MacOS/Chromium"
+    }
+    else {
+        foreach ($commandName in @("google-chrome", "google-chrome-stable", "chromium", "chromium-browser")) {
+            $browserCommand = Get-Command $commandName -ErrorAction SilentlyContinue
+            if ($null -ne $browserCommand) {
+                $browserCandidates += $browserCommand.Source
+            }
+        }
+    }
+
+    $browserPath = $browserCandidates | Where-Object { $_ -and (Test-Path $_) } | Select-Object -First 1
+    if ($null -eq $browserPath) {
+        Write-Warning "Chrome or Chromium was not available; skipping interactive automatic-collection verification."
+    }
+    else {
+        function Start-CoverScopeBrowser([string] $profilePath) {
+            $arguments = @(
+                "--headless=new",
+                "--disable-gpu",
+                "--no-sandbox",
+                "--no-first-run",
+                "--no-default-browser-check",
+                "--user-data-dir=$profilePath",
+                $baseUrl
+            )
+            return Start-Process -FilePath $browserPath -ArgumentList $arguments -PassThru
+        }
+
+        $firstBrowser = Start-CoverScopeBrowser (Join-Path $root "browser-first")
+        $browserProcesses += $firstBrowser
+        $coverageRoot = Join-Path $invocationDirectory "coverage-output"
+        $automaticRunStarted = $false
+        for ($attempt = 0; $attempt -lt 60; $attempt++) {
+            $runDirectories = if (Test-Path $coverageRoot) {
+                @(Get-ChildItem -Path $coverageRoot -Directory)
+            }
+            else {
+                @()
+            }
+            if ($runDirectories.Count -gt 0) {
+                $automaticRunStarted = $true
+                break
+            }
+            Start-Sleep -Milliseconds 500
+        }
+
+        if (-not $automaticRunStarted) {
+            throw "An interactive browser loaded CoverScope, but explicit-target coverage did not start."
+        }
+
+        $initialRunCount = $runDirectories.Count
+        if (-not $firstBrowser.HasExited) {
+            $firstBrowser.Kill($true)
+            $firstBrowser.WaitForExit()
+        }
+
+        $secondBrowser = Start-CoverScopeBrowser (Join-Path $root "browser-second")
+        $browserProcesses += $secondBrowser
+        Start-Sleep -Seconds 3
+        $finalRunCount = @(Get-ChildItem -Path $coverageRoot -Directory).Count
+        if ($finalRunCount -ne $initialRunCount) {
+            throw "A second interactive browser circuit started duplicate coverage. Expected $initialRunCount run, found $finalRunCount."
+        }
+
+        Write-Host "Automatic explicit-target collection started exactly once."
+    }
+
     Write-Host "Smoke test passed at $baseUrl."
 }
 finally {
+    foreach ($browserProcess in $browserProcesses) {
+        if ($null -ne $browserProcess -and -not $browserProcess.HasExited) {
+            $browserProcess.Kill($true)
+            $browserProcess.WaitForExit()
+        }
+        if ($null -ne $browserProcess) {
+            $browserProcess.Dispose()
+        }
+    }
     if ($null -ne $process -and -not $process.HasExited) {
         if (-not $IsWindows) {
             & /bin/kill -INT $process.Id
