@@ -66,7 +66,8 @@ try {
         throw "The installed tool process did not start."
     }
 
-    $baseUrl = "http://127.0.0.1:$port"
+    $fallbackUrl = "http://127.0.0.1:$port"
+    $friendlyUrl = "http://coverscope.localhost:$port"
     $started = $false
     $lastProbeError = "No response received."
     for ($attempt = 0; $attempt -lt 60; $attempt++) {
@@ -75,7 +76,7 @@ try {
         }
 
         try {
-            $homeResponse = Invoke-WebRequest -Uri "$baseUrl/" -UseBasicParsing -TimeoutSec 2
+            $homeResponse = Invoke-WebRequest -Uri "$fallbackUrl/" -UseBasicParsing -TimeoutSec 2
             if ($homeResponse.StatusCode -eq 200) {
                 $started = $true
                 break
@@ -88,24 +89,56 @@ try {
     }
 
     if (-not $started) {
-        throw "CoverScope did not become ready at $baseUrl. Last probe error: $lastProbeError"
+        throw "CoverScope did not become ready at $fallbackUrl. Last probe error: $lastProbeError"
     }
 
-    if ($homeResponse.Content -notmatch "CoverScope" -or $homeResponse.Content -notmatch "Smoke.sln") {
-        throw "The home page did not contain the expected application and target text."
+    $listeners = @([System.Net.NetworkInformation.IPGlobalProperties]::GetIPGlobalProperties().GetActiveTcpListeners() |
+        Where-Object { $_.Port -eq $port })
+    if ($listeners.Count -eq 0) {
+        throw "No active listener was found for CoverScope port $port."
+    }
+    if (@($listeners | Where-Object { -not $_.Address.Equals([System.Net.IPAddress]::Loopback) }).Count -gt 0) {
+        $addresses = ($listeners | ForEach-Object { $_.Address.ToString() }) -join ", "
+        throw "CoverScope must listen only on IPv4 loopback, but port $port was bound at: $addresses"
     }
 
-    foreach ($asset in @(
-        "/app.css?v=smoke",
-        "/coverscope-mark.svg?v=smoke",
-        "/coverscope.js?v=smoke",
-        "/_framework/blazor.web.js"
-    )) {
-        $response = Invoke-WebRequest -Uri "$baseUrl$asset" -UseBasicParsing -TimeoutSec 10
-        if ($response.StatusCode -ne 200 -or $response.RawContentLength -le 0) {
-            throw "Static asset '$asset' was not served correctly."
+    function Assert-CoverScopeEndpoint([string] $origin) {
+        $home = Invoke-WebRequest -Uri "$origin/" -UseBasicParsing -NoProxy -TimeoutSec 10
+        if ($home.StatusCode -ne 200 -or
+            $home.Content -notmatch "CoverScope" -or
+            $home.Content -notmatch "Smoke.sln") {
+            throw "The home page was not served correctly through $origin."
+        }
+
+        foreach ($asset in @(
+            "/app.css?v=smoke",
+            "/coverscope-mark.svg?v=smoke",
+            "/coverscope.js?v=smoke",
+            "/_framework/blazor.web.js"
+        )) {
+            $response = Invoke-WebRequest -Uri "$origin$asset" -UseBasicParsing -NoProxy -TimeoutSec 10
+            if ($response.StatusCode -ne 200 -or $response.RawContentLength -le 0) {
+                throw "Static asset '$asset' was not served correctly through $origin."
+            }
+        }
+
+        $negotiate = Invoke-WebRequest `
+            -Uri "$origin/_blazor/negotiate?negotiateVersion=1" `
+            -Method Post `
+            -ContentType "application/json" `
+            -Body "" `
+            -UseBasicParsing `
+            -NoProxy `
+            -TimeoutSec 10
+        if ($negotiate.StatusCode -ne 200 -or $negotiate.Content -notmatch "connectionId") {
+            throw "The Blazor connection negotiation did not succeed through $origin."
         }
     }
+
+    Assert-CoverScopeEndpoint $fallbackUrl
+    Assert-CoverScopeEndpoint $friendlyUrl
+    Write-Host "Friendly URL and numeric loopback fallback served the app, assets, and Blazor negotiation."
+    $baseUrl = $friendlyUrl
 
     $browserCandidates = @()
     if ($IsWindows) {
@@ -139,6 +172,7 @@ try {
                 "--no-sandbox",
                 "--no-first-run",
                 "--no-default-browser-check",
+                "--no-proxy-server",
                 "--user-data-dir=$profilePath",
                 $baseUrl
             )
