@@ -103,10 +103,10 @@ try {
     }
 
     function Assert-CoverScopeEndpoint([string] $origin) {
-        $home = Invoke-WebRequest -Uri "$origin/" -UseBasicParsing -NoProxy -TimeoutSec 10
-        if ($home.StatusCode -ne 200 -or
-            $home.Content -notmatch "CoverScope" -or
-            $home.Content -notmatch "Smoke.sln") {
+        $homePageResponse = Invoke-WebRequest -Uri "$origin/" -UseBasicParsing -NoProxy -TimeoutSec 10
+        if ($homePageResponse.StatusCode -ne 200 -or
+            $homePageResponse.Content -notmatch "CoverScope" -or
+            $homePageResponse.Content -notmatch "Smoke.sln") {
             throw "The home page was not served correctly through $origin."
         }
 
