@@ -2,7 +2,7 @@ param(
     [Parameter(Mandatory = $true)]
     [string] $PackagePath,
 
-    [string] $Version = "0.1.0-beta.1"
+    [string] $Version = "0.1.0-beta.2"
 )
 
 $ErrorActionPreference = "Stop"
