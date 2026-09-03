@@ -47,6 +47,6 @@ public sealed class StartupCoverageCoordinatorTests
         gate.Set();
         var results = await Task.WhenAll(attempts);
 
-        Assert.Single(results.Where(x => x));
+        Assert.Single(results, result => result);
     }
 }
