@@ -39,6 +39,9 @@ jobs:
       - name: Test
         run: dotnet test DD3.CoverScope.sln --configuration Release --no-build
 
+      - name: Record workspace projection benchmark
+        run: dotnet test tests/DD3.CoverScope.Tests/DD3.CoverScope.Tests.csproj --configuration Release --no-build --filter FullyQualifiedName~LargeReportProjectionBenchmark --logger "console;verbosity=detailed"
+
       - name: Pack
         run: dotnet pack src/DD3.CoverScope.Web/DD3.CoverScope.Web.csproj --configuration Release --no-build --output artifacts/packages
 
