@@ -64,6 +64,45 @@ public sealed class CoverScopeCommandLineTests : IDisposable
         Assert.True(result.Options!.ShowHelp);
     }
 
+    [Fact]
+    public void Parse_AcceptsExplicitTargetPathContainingSpaces()
+    {
+        var projectDirectory = Path.Combine(directory, "Project with spaces");
+        Directory.CreateDirectory(projectDirectory);
+        var target = Path.Combine(projectDirectory, "Demo Tests.csproj");
+        File.WriteAllText(target, string.Empty);
+
+        var result = CoverScopeCommandLine.Parse(
+            [Path.Combine("Project with spaces", "Demo Tests.csproj")],
+            directory);
+
+        Assert.True(result.Success);
+        Assert.Equal(target, result.Options!.TargetPath);
+    }
+
+    [Fact]
+    public void Parse_RejectsMissingExplicitTargetWithActionablePath()
+    {
+        var result = CoverScopeCommandLine.Parse(["missing.sln"], directory);
+
+        Assert.False(result.Success);
+        Assert.Contains("does not exist", result.ErrorMessage!);
+        Assert.Contains(Path.Combine(directory, "missing.sln"), result.ErrorMessage!);
+    }
+
+    [Fact]
+    public void Parse_RejectsUnsupportedExplicitTarget()
+    {
+        var target = Path.Combine(directory, "README.md");
+        File.WriteAllText(target, string.Empty);
+
+        var result = CoverScopeCommandLine.Parse(["README.md"], directory);
+
+        Assert.False(result.Success);
+        Assert.Contains(".sln", result.ErrorMessage!);
+        Assert.Contains(".csproj", result.ErrorMessage!);
+    }
+
     public void Dispose()
     {
         try { Directory.Delete(directory, recursive: true); }
