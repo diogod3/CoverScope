@@ -98,9 +98,11 @@ Start CoverScope from the directory containing the code you want to inspect:
 coverscope
 ```
 
-CoverScope binds to `127.0.0.1` on an available port, prints the local URL,
-opens the default browser, and runs until you press Ctrl+C. The solution browser
-starts in the directory where the command was invoked.
+CoverScope binds only to `127.0.0.1` on an available port, then prints and
+opens the friendlier `http://coverscope.localhost:<port>` address. It also prints
+`http://127.0.0.1:<port>` as a fallback and runs until you press Ctrl+C. Neither
+address requires hosts-file changes, administrator privileges, or a DNS service.
+The solution browser starts in the directory where the command was invoked.
 
 You can preselect a solution or project and control browser and port behavior:
 
