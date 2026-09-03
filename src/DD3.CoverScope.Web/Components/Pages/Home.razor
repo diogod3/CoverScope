@@ -817,6 +817,12 @@ else
         if (targetLine > 0) await JS.InvokeVoidAsync("CoverScope.scrollToLine", $"line-{targetLine}");
     }
 
+    private static string FileDirectory(string relativePath)
+    {
+        var directory = Path.GetDirectoryName(relativePath);
+        return string.IsNullOrWhiteSpace(directory) ? "project root" : directory;
+    }
+
     private void ResetExplorerExpansion()
     {
         expandedProjects.Clear();
