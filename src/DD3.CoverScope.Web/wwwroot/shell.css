@@ -1,3 +1,8 @@
+.app-workspace > .workspace[hidden],
+.app-workspace > .metrics-view[hidden] {
+    display: none !important;
+}
+
 .coverage-app {
     min-height: 100vh;
 }
