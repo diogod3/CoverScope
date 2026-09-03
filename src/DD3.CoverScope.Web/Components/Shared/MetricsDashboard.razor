@@ -1,6 +1,6 @@
-@inject CoverageMetricsBuilder Metrics
+@inject CoverageWorkspaceProjectionCache Projections
 
-<section class="metrics-view">
+<section class="metrics-view" hidden="@(!IsVisible)">
     <div class="metrics-summary-grid">
         <article class="metric-summary-card line-card">
             <span>Line coverage</span>
@@ -49,11 +49,11 @@
         <div class="metrics-controls">
             <label class="metrics-search">
                 <span>Search</span>
-                <input @bind="search" @bind:event="oninput" placeholder="Find @LevelName.ToLowerInvariant()…" />
+                <input @bind="Search" @bind:event="oninput" placeholder="Find @LevelName.ToLowerInvariant()…" />
             </label>
             <label>
                 <span>Sort</span>
-                <select @bind="sortMode">
+                <select @bind="SortMode">
                     <option value="@MetricSort.MostMissed">Most missed lines</option>
                     <option value="@MetricSort.LowestCoverage">Lowest coverage</option>
                     <option value="@MetricSort.Largest">Largest total</option>
@@ -63,7 +63,7 @@
             </label>
             <label>
                 <span>Coverage</span>
-                <select @bind="coverageThreshold">
+                <select @bind="CoverageThreshold">
                     <option value="101">Any coverage</option>
                     <option value="100">Below 100%</option>
                     <option value="90">Below 90%</option>
@@ -73,10 +73,10 @@
             </label>
             <label class="minimum-lines">
                 <span>Minimum lines</span>
-                <input type="number" min="0" step="10" @bind="minimumLines" />
+                <input type="number" min="0" step="10" @bind="MinimumLines" />
             </label>
             <label class="metrics-check">
-                <input type="checkbox" @bind="onlyWithGaps" />
+                <input type="checkbox" @bind="OnlyWithGaps" />
                 <span>Only with gaps</span>
             </label>
         </div>
@@ -140,6 +140,7 @@
     private enum MetricSort { MostMissed, LowestCoverage, Largest, HighestCoverage, Name }
 
     [Parameter, EditorRequired] public CoverageReport Report { get; set; } = default!;
+    [Parameter] public bool IsVisible { get; set; } = true;
     [Parameter] public EventCallback<CoverageMetricRow> OnOpenClass { get; set; }
 
     private CoverageReport? currentReport;
@@ -150,6 +151,63 @@
     private int coverageThreshold = 101;
     private int minimumLines;
     private bool onlyWithGaps;
+    private IReadOnlyList<CoverageMetricRow> baseRows = [];
+    private IReadOnlyList<CoverageMetricRow> visibleRows = [];
+
+    private string Search
+    {
+        get => search;
+        set
+        {
+            if (search == value) return;
+            search = value;
+            RefreshVisibleRows();
+        }
+    }
+
+    private MetricSort SortMode
+    {
+        get => sortMode;
+        set
+        {
+            if (sortMode == value) return;
+            sortMode = value;
+            RefreshVisibleRows();
+        }
+    }
+
+    private int CoverageThreshold
+    {
+        get => coverageThreshold;
+        set
+        {
+            if (coverageThreshold == value) return;
+            coverageThreshold = value;
+            RefreshVisibleRows();
+        }
+    }
+
+    private int MinimumLines
+    {
+        get => minimumLines;
+        set
+        {
+            if (minimumLines == value) return;
+            minimumLines = value;
+            RefreshVisibleRows();
+        }
+    }
+
+    private bool OnlyWithGaps
+    {
+        get => onlyWithGaps;
+        set
+        {
+            if (onlyWithGaps == value) return;
+            onlyWithGaps = value;
+            RefreshVisibleRows();
+        }
+    }
 
     private string LevelName => selectedNamespace is not null ? "Classes" : selectedProject is not null ? "Namespaces" : "Projects";
     private string LevelTitle => $"Coverage by {LevelName.ToLowerInvariant()}";
@@ -159,7 +217,7 @@
             ? "Compare the namespaces in this project and drill into their classes."
             : "Compare projects and start with the areas containing the most missed lines.";
 
-    private IReadOnlyList<CoverageMetricRow> VisibleRows => ApplyFiltersAndSort(BuildRows()).ToArray();
+    private IReadOnlyList<CoverageMetricRow> VisibleRows => visibleRows;
 
     protected override void OnParametersSet()
     {
@@ -168,13 +226,20 @@
         selectedProject = null;
         selectedNamespace = null;
         search = string.Empty;
+        RefreshRows();
     }
 
-    private IReadOnlyList<CoverageMetricRow> BuildRows() => selectedNamespace is not null && selectedProject is not null
-        ? Metrics.BuildClasses(selectedProject, selectedNamespace)
-        : selectedProject is not null
-            ? Metrics.BuildNamespaces(selectedProject)
-            : Metrics.BuildProjects(Report);
+    private IReadOnlyList<CoverageMetricRow> BuildRows() =>
+        Projections.GetMetrics(Report, selectedProject, selectedNamespace);
+
+    private void RefreshRows()
+    {
+        baseRows = BuildRows();
+        RefreshVisibleRows();
+    }
+
+    private void RefreshVisibleRows() =>
+        visibleRows = ApplyFiltersAndSort(baseRows).ToArray();
 
     private IEnumerable<CoverageMetricRow> ApplyFiltersAndSort(IEnumerable<CoverageMetricRow> rows)
     {
@@ -212,6 +277,7 @@
             selectedProject = row.Project;
             selectedNamespace = null;
             search = string.Empty;
+            RefreshRows();
             return Task.CompletedTask;
         }
         if (row.Scope == CoverageMetricScope.Namespace)
@@ -219,6 +285,7 @@
             selectedProject = row.Project;
             selectedNamespace = row.Namespace;
             search = string.Empty;
+            RefreshRows();
             return Task.CompletedTask;
         }
         return OnOpenClass.InvokeAsync(row);
@@ -232,12 +299,14 @@
         selectedProject = null;
         selectedNamespace = null;
         search = string.Empty;
+        RefreshRows();
     }
 
     private void ShowNamespaces()
     {
         selectedNamespace = null;
         search = string.Empty;
+        RefreshRows();
     }
 
     private static string ScopeIcon(CoverageMetricScope scope) => scope switch
