@@ -22,8 +22,11 @@ public sealed class CoverageRunner
     public async Task<CoverageRunResult> RunAsync(
         string solutionPath,
         CoverageSettings settings,
-        CancellationToken cancellationToken = default)
+        CancellationToken cancellationToken = default,
+        IProgress<CoverageCollectionPhase>? progress = null)
     {
+        progress?.Report(CoverageCollectionPhase.PreparingCollection);
+
         if (string.IsNullOrWhiteSpace(solutionPath))
             return new(CoverageRunOutcome.ExecutionFailed, "Choose a .sln, .slnx, or test project first.", string.Empty);
 
@@ -62,10 +65,12 @@ public sealed class CoverageRunner
         try
         {
             using var process = new Process { StartInfo = startInfo };
+            progress?.Report(CoverageCollectionPhase.RunningTests);
             process.Start();
             var stdout = process.StandardOutput.ReadToEndAsync(cancellationToken);
             var stderr = process.StandardError.ReadToEndAsync(cancellationToken);
             await process.WaitForExitAsync(cancellationToken);
+            progress?.Report(CoverageCollectionPhase.ProcessingReports);
             var output = string.Join(Environment.NewLine, await stdout, await stderr).Trim();
 
             var reports = Directory
