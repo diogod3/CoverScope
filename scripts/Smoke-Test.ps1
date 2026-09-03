@@ -136,8 +136,19 @@ try {
     }
 
     Assert-CoverScopeEndpoint $fallbackUrl
-    Assert-CoverScopeEndpoint $friendlyUrl
-    Write-Host "Friendly URL and numeric loopback fallback served the app, assets, and Blazor negotiation."
+    try {
+        Assert-CoverScopeEndpoint $friendlyUrl
+        Write-Host "Friendly URL served the app, assets, and Blazor negotiation through the system HTTP resolver."
+    }
+    catch {
+        if (-not $IsWindows -or $_.Exception.Message -notmatch "No such host") {
+            throw
+        }
+
+        Write-Warning "The Windows runner system HTTP resolver does not resolve localhost subdomains; browser verification remains required."
+    }
+
+    Write-Host "Numeric loopback fallback served the app, assets, and Blazor negotiation."
     $baseUrl = $friendlyUrl
 
     $browserCandidates = @()
