@@ -73,7 +73,7 @@ Install the tool:
 
 ```bash
 dotnet tool install --global DD3.CoverScope.Tool \
-  --version 0.1.0-beta.1 \
+  --version 0.1.0-beta.2 \
   --add-source https://nuget.pkg.github.com/diogod3/index.json
 ```
 
@@ -167,8 +167,8 @@ Build and inspect the tool package:
 
 ```bash
 dotnet pack src/DD3.CoverScope.Web/DD3.CoverScope.Web.csproj --configuration Release
-pwsh ./scripts/Inspect-Package.ps1 -PackagePath ./artifacts/packages/DD3.CoverScope.Tool.0.1.0-beta.1.nupkg
-pwsh ./scripts/Smoke-Test.ps1 -PackagePath ./artifacts/packages/DD3.CoverScope.Tool.0.1.0-beta.1.nupkg
+pwsh ./scripts/Inspect-Package.ps1 -PackagePath ./artifacts/packages/DD3.CoverScope.Tool.0.1.0-beta.2.nupkg
+pwsh ./scripts/Smoke-Test.ps1 -PackagePath ./artifacts/packages/DD3.CoverScope.Tool.0.1.0-beta.2.nupkg
 ```
 
 ## Maintainer release process
@@ -187,8 +187,8 @@ To prepare a release:
    project version with a leading `v`.
 
 ```bash
-git tag -a v0.1.0-beta.1 -m "v0.1.0-beta.1"
-git push origin v0.1.0-beta.1
+git tag -a v0.1.0-beta.2 -m "v0.1.0-beta.2"
+git push origin v0.1.0-beta.2
 ```
 
 The release workflow validates the tag against the project version, runs the
