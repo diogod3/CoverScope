@@ -215,7 +215,9 @@ try {
         $initialRunCount = $runDirectories.Count
         if (-not $firstBrowser.HasExited) {
             $firstBrowser.Kill($true)
-            $firstBrowser.WaitForExit()
+            if (-not $firstBrowser.WaitForExit(10000)) {
+                throw "The first headless browser did not stop within 10 seconds."
+            }
         }
 
         $secondBrowser = Start-CoverScopeBrowser (Join-Path $root "browser-second")
@@ -235,7 +237,9 @@ finally {
     foreach ($browserProcess in $browserProcesses) {
         if ($null -ne $browserProcess -and -not $browserProcess.HasExited) {
             $browserProcess.Kill($true)
-            $browserProcess.WaitForExit()
+            if (-not $browserProcess.WaitForExit(10000)) {
+                Write-Warning "A headless browser process did not stop within 10 seconds."
+            }
         }
         if ($null -ne $browserProcess) {
             $browserProcess.Dispose()
