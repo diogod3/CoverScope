@@ -214,6 +214,10 @@ Collection settings are stored under the current user's local application-data d
 
 TBD
 
+## Development disclosure
+
+CoverScope was developed with the assistance of OpenAI's GPT-5.6 Sol through Codex. Project direction, requirements, review, testing, and release decisions remain human-led.
+
 ## License
 
 CoverScope is licensed under the [Apache License 2.0](LICENSE).
