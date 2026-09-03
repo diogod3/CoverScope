@@ -9,7 +9,7 @@
     <PackAsTool>true</PackAsTool>
     <ToolCommandName>coverscope</ToolCommandName>
     <PackageId>DD3.CoverScope.Tool</PackageId>
-    <Version>0.1.0-beta.1</Version>
+    <Version>0.1.0-beta.2</Version>
     <Authors>Diogo Duarte</Authors>
     <Description>A cross-platform, local-first .NET code coverage explorer.</Description>
     <PackageTags>dotnet-tool;code-coverage;coverlet;cobertura;blazor</PackageTags>
