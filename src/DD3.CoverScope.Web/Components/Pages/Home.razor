@@ -326,56 +326,70 @@
             }
             @foreach (var projectNode in ExplorerProjects)
             {
-                <details class="tree-level project-level" open>
-                    <summary class="tree-row project-row">
+                <details class="tree-level project-level" open="@expandedProjects.Contains(projectNode.Project)">
+                    <summary class="tree-row project-row" @onclick="() => ToggleProject(projectNode.Project)" @onclick:preventDefault="true">
                         <span><b class="node-icon project-icon">P</b><span class="node-label">@projectNode.Project.Name<small>@projectNode.Namespaces.Count namespaces</small></span></span>
                         <CoveragePill Metric="projectNode.Project.LineMetric" />
                     </summary>
-                    @foreach (var namespaceNode in projectNode.Namespaces)
+                    @if (expandedProjects.Contains(projectNode.Project))
                     {
-                        <details class="tree-level namespace-level" open="@(ExplorerProjects.Count == 1)">
-                            <summary class="tree-row namespace-row">
-                                <span><b class="node-icon namespace-icon">N</b><span class="node-label">@namespaceNode.Namespace.Name<small>@namespaceNode.Files.Count files</small></span></span>
-                                <CoveragePill Metric="namespaceNode.Namespace.LineMetric" />
-                            </summary>
-                            @foreach (var fileNode in namespaceNode.Files)
-                            {
-                                <details class="tree-level file-level" open="@(namespaceNode.Files.Count == 1)">
-                                    <summary class="tree-row file-tree-row @(selectedFile == fileNode.File ? (selectedClass is null ? "selected" : "active-parent") : null)" @onclick="() => SelectFile(fileNode.File)">
-                                        <span><b class="node-icon file-node-icon">CS</b><span class="node-label">@fileNode.File.DisplayName<small>@FileDirectory(fileNode.File.RelativePath)</small></span></span>
-                                        <CoveragePill Metric="fileNode.LineMetric" />
-                                    </summary>
-                                    @foreach (var classNode in fileNode.Classes)
+                        @foreach (var namespaceNode in projectNode.Namespaces)
+                        {
+                            <details class="tree-level namespace-level" open="@expandedNamespaces.Contains(namespaceNode.Namespace)">
+                                <summary class="tree-row namespace-row" @onclick="() => ToggleNamespace(namespaceNode.Namespace)" @onclick:preventDefault="true">
+                                    <span><b class="node-icon namespace-icon">N</b><span class="node-label">@namespaceNode.Namespace.Name<small>@namespaceNode.Files.Count files</small></span></span>
+                                    <CoveragePill Metric="namespaceNode.Namespace.LineMetric" />
+                                </summary>
+                                @if (expandedNamespaces.Contains(namespaceNode.Namespace))
+                                {
+                                    @foreach (var fileNode in namespaceNode.Files)
                                     {
-                                        <details class="tree-level class-level">
-                                            <summary class="tree-row class-row @(selectedClass == classNode.Class ? "selected" : null)" @onclick="() => SelectClass(projectNode.Project, classNode.Class)">
-                                                <span>
-                                                    <b class="node-icon class-icon">C</b>
-                                                    <span class="node-label">
-                                                        @classNode.Class.Name
-                                                        <small>
-                                                            @if (classNode.IsPartial)
-                                                            {
-                                                                <i class="partial-tag">partial</i>
-                                                            }
-                                                            @classNode.Class.FullName
-                                                        </small>
-                                                    </span>
-                                                </span>
-                                                <CoveragePill Metric="classNode.Class.LineMetric" />
+                                        <details class="tree-level file-level" open="@expandedFiles.Contains(fileNode.File)">
+                                            <summary class="tree-row file-tree-row @(selectedFile == fileNode.File ? (selectedClass is null ? "selected" : "active-parent") : null)"
+                                                     @onclick="() => ToggleFile(fileNode.File)" @onclick:preventDefault="true">
+                                                <span><b class="node-icon file-node-icon">CS</b><span class="node-label">@fileNode.File.DisplayName<small>@FileDirectory(fileNode.File.RelativePath)</small></span></span>
+                                                <CoveragePill Metric="fileNode.LineMetric" />
                                             </summary>
-                                            @foreach (var method in classNode.Methods)
+                                            @if (expandedFiles.Contains(fileNode.File))
                                             {
-                                                <button class="tree-row method-row @(selectedMethod == method ? "selected" : null)" @onclick="() => SelectMethod(projectNode.Project, classNode.Class, method)">
-                                                    <span><b class="node-icon method-icon">M</b><span class="node-label">@method.Name<small>line @method.StartLine · @method.Signature</small></span></span>
-                                                    <CoveragePill Metric="method.Lines" />
-                                                </button>
+                                                @foreach (var classNode in fileNode.Classes)
+                                                {
+                                                    <details class="tree-level class-level" open="@expandedClasses.Contains(classNode.Class)">
+                                                        <summary class="tree-row class-row @(selectedClass == classNode.Class ? "selected" : null)"
+                                                                 @onclick="() => ToggleClass(projectNode.Project, classNode.Class)" @onclick:preventDefault="true">
+                                                            <span>
+                                                                <b class="node-icon class-icon">C</b>
+                                                                <span class="node-label">
+                                                                    @classNode.Class.Name
+                                                                    <small>
+                                                                        @if (classNode.IsPartial)
+                                                                        {
+                                                                            <i class="partial-tag">partial</i>
+                                                                        }
+                                                                        @classNode.Class.FullName
+                                                                    </small>
+                                                                </span>
+                                                            </span>
+                                                            <CoveragePill Metric="classNode.Class.LineMetric" />
+                                                        </summary>
+                                                        @if (expandedClasses.Contains(classNode.Class))
+                                                        {
+                                                            @foreach (var method in classNode.Methods)
+                                                            {
+                                                                <button class="tree-row method-row @(selectedMethod == method ? "selected" : null)" @onclick="() => SelectMethod(projectNode.Project, classNode.Class, method)">
+                                                                    <span><b class="node-icon method-icon">M</b><span class="node-label">@method.Name<small>line @method.StartLine · @method.Signature</small></span></span>
+                                                                    <CoveragePill Metric="method.Lines" />
+                                                                </button>
+                                                            }
+                                                        }
+                                                    </details>
+                                                }
                                             }
                                         </details>
                                     }
-                                </details>
-                            }
-                        </details>
+                                }
+                            </details>
+                        }
                     }
                 </details>
             }
@@ -485,6 +499,10 @@ else
     private MethodCoverage? selectedMethod;
     private List<SourceLine> sourceLines = [];
     private int targetLine;
+    private readonly HashSet<PackageCoverage> expandedProjects = new(ReferenceEqualityComparer.Instance);
+    private readonly HashSet<NamespaceCoverage> expandedNamespaces = new(ReferenceEqualityComparer.Instance);
+    private readonly HashSet<FileCoverage> expandedFiles = new(ReferenceEqualityComparer.Instance);
+    private readonly HashSet<ClassCoverage> expandedClasses = new(ReferenceEqualityComparer.Instance);
 
     private ExplorerProjection Explorer =>
         Projections.GetExplorer(report, filter, coverageFilter, sortMode);
@@ -674,6 +692,7 @@ else
             selectedClass = null;
             selectedMethod = null;
             sourceLines = [];
+            ResetExplorerExpansion();
             var firstProject = report.Packages.OrderBy(x => x.LineMetric.Percent).FirstOrDefault();
             var firstClass = firstProject?.Namespaces.SelectMany(x => x.Classes).OrderBy(x => x.LineMetric.Percent).FirstOrDefault();
             if (firstProject is not null && firstClass is not null) await SelectClass(firstProject, firstClass);
@@ -782,6 +801,7 @@ else
         workspaceMode = WorkspaceMode.Explorer;
         filter = row.FullName;
         coverageFilter = ExplorerCoverageFilter.All;
+        ExpandSelection(row.Project, classItem);
         await SelectClass(row.Project, classItem);
     }
 
@@ -799,8 +819,61 @@ else
 
     private void ResetExplorerExpansion()
     {
-        // Expansion is represented by the native <details> elements. Keeping the
-        // Explorer mounted preserves their browser state across workspace switches.
+        expandedProjects.Clear();
+        expandedNamespaces.Clear();
+        expandedFiles.Clear();
+        expandedClasses.Clear();
+
+        var projection = Explorer;
+        foreach (var projectNode in projection.Projects)
+            expandedProjects.Add(projectNode.Project);
+
+        if (projection.Projects.Count != 1)
+            return;
+
+        foreach (var namespaceNode in projection.Projects[0].Namespaces)
+        {
+            expandedNamespaces.Add(namespaceNode.Namespace);
+            if (namespaceNode.Files.Count == 1)
+                expandedFiles.Add(namespaceNode.Files[0].File);
+        }
+    }
+
+    private void ToggleProject(PackageCoverage project) => Toggle(expandedProjects, project);
+
+    private void ToggleNamespace(NamespaceCoverage namespaceItem) =>
+        Toggle(expandedNamespaces, namespaceItem);
+
+    private Task ToggleFile(FileCoverage file)
+    {
+        Toggle(expandedFiles, file);
+        return SelectFile(file);
+    }
+
+    private Task ToggleClass(PackageCoverage project, ClassCoverage classItem)
+    {
+        Toggle(expandedClasses, classItem);
+        return SelectClass(project, classItem);
+    }
+
+    private void ExpandSelection(PackageCoverage project, ClassCoverage classItem)
+    {
+        expandedProjects.Add(project);
+        var namespaceItem = project.Namespaces.FirstOrDefault(x => x.Classes.Contains(classItem));
+        if (namespaceItem is not null)
+            expandedNamespaces.Add(namespaceItem);
+        var file = project.Files.FirstOrDefault(x =>
+            string.Equals(x.RelativePath, classItem.RelativePath, StringComparison.OrdinalIgnoreCase));
+        if (file is not null)
+            expandedFiles.Add(file);
+        expandedClasses.Add(classItem);
+    }
+
+    private static void Toggle<T>(HashSet<T> expanded, T item)
+        where T : class
+    {
+        if (!expanded.Remove(item))
+            expanded.Add(item);
     }
 
 }
