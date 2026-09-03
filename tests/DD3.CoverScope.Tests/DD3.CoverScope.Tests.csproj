@@ -13,6 +13,7 @@
     <PackageReference Include="coverlet.collector" Version="6.0.2" PrivateAssets="all" />
   </ItemGroup>
   <ItemGroup>
+    <FrameworkReference Include="Microsoft.AspNetCore.App" />
     <ProjectReference Include="..\..\src\DD3.CoverScope.Web\DD3.CoverScope.Web.csproj" />
   </ItemGroup>
 </Project>
