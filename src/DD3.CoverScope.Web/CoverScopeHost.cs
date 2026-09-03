@@ -72,6 +72,7 @@ internal static class CoverScopeHost
         builder.Services.AddSingleton<TrxTestResultParser>();
         builder.Services.AddSingleton<CoverageRunner>();
         builder.Services.AddSingleton<CoverageMetricsBuilder>();
+        builder.Services.AddScoped<CoverageWorkspaceProjectionCache>();
 
         await using var app = builder.Build();
 
