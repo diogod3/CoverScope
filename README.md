@@ -77,7 +77,7 @@ Install the tool:
 
 ```bash
 dotnet tool install --global DD3.CoverScope.Tool \
-  --version 0.1.0-beta.1 \
+  --version 0.1.0-beta.2 \
   --add-source https://nuget.pkg.github.com/diogod3/index.json
 ```
 
@@ -102,9 +102,11 @@ Start CoverScope from the directory containing the code you want to inspect:
 coverscope
 ```
 
-CoverScope binds to `127.0.0.1` on an available port, prints the local URL,
-opens the default browser, and runs until you press Ctrl+C. The solution browser
-starts in the directory where the command was invoked.
+CoverScope binds only to `127.0.0.1` on an available port, then prints and
+opens the friendlier `http://coverscope.localhost:<port>` address. It also prints
+`http://127.0.0.1:<port>` as a fallback and runs until you press Ctrl+C. Neither
+address requires hosts-file changes, administrator privileges, or a DNS service.
+The solution browser starts in the directory where the command was invoked.
 
 You can preselect a solution or project and control browser and port behavior:
 
@@ -169,8 +171,8 @@ Build and inspect the tool package:
 
 ```bash
 dotnet pack src/DD3.CoverScope.Web/DD3.CoverScope.Web.csproj --configuration Release
-pwsh ./scripts/Inspect-Package.ps1 -PackagePath ./artifacts/packages/DD3.CoverScope.Tool.0.1.0-beta.1.nupkg
-pwsh ./scripts/Smoke-Test.ps1 -PackagePath ./artifacts/packages/DD3.CoverScope.Tool.0.1.0-beta.1.nupkg
+pwsh ./scripts/Inspect-Package.ps1 -PackagePath ./artifacts/packages/DD3.CoverScope.Tool.0.1.0-beta.2.nupkg
+pwsh ./scripts/Smoke-Test.ps1 -PackagePath ./artifacts/packages/DD3.CoverScope.Tool.0.1.0-beta.2.nupkg
 ```
 
 ## Maintainer release process
@@ -189,8 +191,8 @@ To prepare a release:
    project version with a leading `v`.
 
 ```bash
-git tag -a v0.1.0-beta.1 -m "v0.1.0-beta.1"
-git push origin v0.1.0-beta.1
+git tag -a v0.1.0-beta.2 -m "v0.1.0-beta.2"
+git push origin v0.1.0-beta.2
 ```
 
 The release workflow validates the tag against the project version, runs the
@@ -217,6 +219,10 @@ Collection settings are stored under the current user's local application-data d
 ## Roadmap
 
 TBD
+
+## Development disclosure
+
+CoverScope was developed with the assistance of OpenAI's GPT-5.6 Sol through Codex. Project direction, requirements, review, testing, and release decisions remain human-led.
 
 ## License
 
