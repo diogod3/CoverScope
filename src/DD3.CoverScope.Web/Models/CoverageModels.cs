@@ -155,7 +155,8 @@ public sealed record CoverageRunResult(
     string Message,
     string Output,
     string? ReportPath = null,
-    TestRunSummary? Tests = null)
+    TestRunSummary? Tests = null,
+    CoverageRunManifest? Run = null)
 {
     public bool Success => Outcome == CoverageRunOutcome.Succeeded;
     public bool HasCoverage => ReportPath is not null;

@@ -2,7 +2,7 @@ param(
     [Parameter(Mandatory = $true)]
     [string] $PackagePath,
 
-    [string] $Version = "0.1.0-beta.2"
+    [string] $Version = "0.1.0-beta.3"
 )
 
 $ErrorActionPreference = "Stop"
@@ -192,7 +192,7 @@ try {
 
         $firstBrowser = Start-CoverScopeBrowser (Join-Path $root "browser-first")
         $browserProcesses += $firstBrowser
-        $coverageRoot = Join-Path $invocationDirectory "coverage-output"
+        $coverageRoot = Join-Path $invocationDirectory ".coverscope/reports"
         $automaticRunStarted = $false
         for ($attempt = 0; $attempt -lt 60; $attempt++) {
             $runDirectories = if (Test-Path $coverageRoot) {
@@ -210,6 +210,11 @@ try {
 
         if (-not $automaticRunStarted) {
             throw "An interactive browser loaded CoverScope, but explicit-target coverage did not start."
+        }
+
+        $manifestPath = Join-Path $runDirectories[0].FullName "run.json"
+        if (-not (Test-Path $manifestPath)) {
+            throw "The automatic coverage run did not create run.json."
         }
 
         $initialRunCount = $runDirectories.Count
