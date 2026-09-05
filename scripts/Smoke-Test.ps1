@@ -193,7 +193,7 @@ try {
         $firstBrowser = Start-CoverScopeBrowser (Join-Path $root "browser-first")
         $browserProcesses += $firstBrowser
         $coverageRoot = Join-Path $invocationDirectory ".coverscope/reports"
-        $automaticRunStarted = $false
+        $automaticRunCompleted = $false
         for ($attempt = 0; $attempt -lt 60; $attempt++) {
             $runDirectories = if (Test-Path $coverageRoot) {
                 @(Get-ChildItem -Path $coverageRoot -Directory)
@@ -202,19 +202,20 @@ try {
                 @()
             }
             if ($runDirectories.Count -gt 0) {
-                $automaticRunStarted = $true
-                break
+                $manifestPath = Join-Path $runDirectories[0].FullName "run.json"
+                if (Test-Path $manifestPath) {
+                    $manifest = Get-Content -Raw -Path $manifestPath | ConvertFrom-Json
+                    if ($manifest.schemaVersion -eq 1 -and $manifest.status -ne "inProgress") {
+                        $automaticRunCompleted = $true
+                        break
+                    }
+                }
             }
             Start-Sleep -Milliseconds 500
         }
 
-        if (-not $automaticRunStarted) {
-            throw "An interactive browser loaded CoverScope, but explicit-target coverage did not start."
-        }
-
-        $manifestPath = Join-Path $runDirectories[0].FullName "run.json"
-        if (-not (Test-Path $manifestPath)) {
-            throw "The automatic coverage run did not create run.json."
+        if (-not $automaticRunCompleted) {
+            throw "An interactive browser loaded CoverScope, but explicit-target coverage did not produce a completed run manifest."
         }
 
         $initialRunCount = $runDirectories.Count
