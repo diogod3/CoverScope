@@ -13,7 +13,9 @@ public static class CoverageRunLabelFormatter
         culture ??= CultureInfo.CurrentCulture;
         timeZone ??= TimeZoneInfo.Local;
         var localTime = TimeZoneInfo.ConvertTime(run.StartedAtUtc, timeZone);
-        return $"{run.Target.Name} — {localTime.ToString("MMM d, t", culture)}";
+        var date = localTime.ToString("MMM d", culture);
+        var time = localTime.ToString("t", culture);
+        return $"{run.Target.Name} — {date}, {time}";
     }
 
     public static string StatusLabel(CoverageRunStatus status) => status switch
