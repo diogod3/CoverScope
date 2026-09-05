@@ -12,11 +12,34 @@ $toolDirectory = Join-Path $root "tool"
 $invocationDirectory = Join-Path $root "workspace"
 $nugetConfig = Join-Path $root "NuGet.Config"
 $process = $null
+$secondaryProcess = $null
 $browserProcesses = @()
 
 try {
     New-Item -ItemType Directory -Path $toolDirectory, $invocationDirectory | Out-Null
-    Set-Content -Path (Join-Path $invocationDirectory "Smoke.sln") -Value ""
+    @"
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <IsTestProject>true</IsTestProject>
+  </PropertyGroup>
+  <ItemGroup>
+    <PackageReference Include="Microsoft.NET.Test.Sdk" Version="17.11.1" />
+    <PackageReference Include="xunit" Version="2.9.2" />
+    <PackageReference Include="xunit.runner.visualstudio" Version="2.8.2" PrivateAssets="all" />
+    <PackageReference Include="coverlet.collector" Version="6.0.2" PrivateAssets="all" />
+  </ItemGroup>
+</Project>
+"@ | Set-Content -Path (Join-Path $invocationDirectory "Smoke.Tests.csproj")
+    @"
+using Xunit;
+
+public sealed class SmokeTests
+{
+    [Fact]
+    public void CoverageTarget() => Assert.True(true);
+}
+"@ | Set-Content -Path (Join-Path $invocationDirectory "SmokeTests.cs")
 
     @"
 <?xml version="1.0" encoding="utf-8"?>
@@ -55,7 +78,7 @@ try {
     $startInfo.FileName = $toolPath
     $startInfo.WorkingDirectory = $invocationDirectory
     $startInfo.UseShellExecute = $false
-    $startInfo.ArgumentList.Add("Smoke.sln")
+    $startInfo.ArgumentList.Add("Smoke.Tests.csproj")
     $startInfo.ArgumentList.Add("--no-browser")
     $startInfo.ArgumentList.Add("--port")
     $startInfo.ArgumentList.Add($port.ToString())
@@ -106,7 +129,7 @@ try {
         $homePageResponse = Invoke-WebRequest -Uri "$origin/" -UseBasicParsing -NoProxy -TimeoutSec 10
         if ($homePageResponse.StatusCode -ne 200 -or
             $homePageResponse.Content -notmatch "CoverScope" -or
-            $homePageResponse.Content -notmatch "Smoke.sln") {
+            $homePageResponse.Content -notmatch "Smoke.Tests.csproj") {
             throw "The home page was not served correctly through $origin."
         }
 
@@ -194,7 +217,7 @@ try {
         $browserProcesses += $firstBrowser
         $coverageRoot = Join-Path $invocationDirectory ".coverscope/reports"
         $automaticRunCompleted = $false
-        for ($attempt = 0; $attempt -lt 60; $attempt++) {
+        for ($attempt = 0; $attempt -lt 120; $attempt++) {
             $runDirectories = if (Test-Path $coverageRoot) {
                 @(Get-ChildItem -Path $coverageRoot -Directory)
             }
@@ -205,7 +228,12 @@ try {
                 $manifestPath = Join-Path $runDirectories[0].FullName "run.json"
                 if (Test-Path $manifestPath) {
                     $manifest = Get-Content -Raw -Path $manifestPath | ConvertFrom-Json
-                    if ($manifest.schemaVersion -eq 1 -and $manifest.status -ne "inProgress") {
+                    $coverageArtifacts = @($manifest.artifacts | Where-Object { $_.kind -eq "coverage" })
+                    $testArtifacts = @($manifest.artifacts | Where-Object { $_.kind -eq "testResults" })
+                    if ($manifest.schemaVersion -eq 1 -and
+                        $manifest.status -eq "completed" -and
+                        $coverageArtifacts.Count -gt 0 -and
+                        $testArtifacts.Count -gt 0) {
                         $automaticRunCompleted = $true
                         break
                     }
@@ -215,7 +243,7 @@ try {
         }
 
         if (-not $automaticRunCompleted) {
-            throw "An interactive browser loaded CoverScope, but explicit-target coverage did not produce a completed run manifest."
+            throw "An interactive browser loaded CoverScope, but explicit-target coverage did not produce a successful run manifest with coverage and test artifacts."
         }
 
         $initialRunCount = $runDirectories.Count
@@ -234,7 +262,72 @@ try {
             throw "A second interactive browser circuit started duplicate coverage. Expected $initialRunCount run, found $finalRunCount."
         }
 
-        Write-Host "Automatic explicit-target collection started exactly once."
+        $secondListener = [System.Net.Sockets.TcpListener]::new([System.Net.IPAddress]::Loopback, 0)
+        $secondListener.Start()
+        $secondPort = ([System.Net.IPEndPoint]$secondListener.LocalEndpoint).Port
+        $secondListener.Stop()
+
+        $secondStartInfo = [System.Diagnostics.ProcessStartInfo]::new()
+        $secondStartInfo.FileName = $toolPath
+        $secondStartInfo.WorkingDirectory = $invocationDirectory
+        $secondStartInfo.UseShellExecute = $false
+        $secondStartInfo.ArgumentList.Add("Smoke.Tests.csproj")
+        $secondStartInfo.ArgumentList.Add("--no-browser")
+        $secondStartInfo.ArgumentList.Add("--port")
+        $secondStartInfo.ArgumentList.Add($secondPort.ToString())
+
+        $secondaryProcess = [System.Diagnostics.Process]::new()
+        $secondaryProcess.StartInfo = $secondStartInfo
+        if (-not $secondaryProcess.Start()) {
+            throw "The second installed tool process did not start."
+        }
+
+        $secondFallbackUrl = "http://127.0.0.1:$secondPort"
+        $secondStarted = $false
+        for ($attempt = 0; $attempt -lt 60; $attempt++) {
+            if ($secondaryProcess.HasExited) {
+                throw "The second CoverScope process exited before it became ready with exit code $($secondaryProcess.ExitCode)."
+            }
+            try {
+                $response = Invoke-WebRequest -Uri "$secondFallbackUrl/" -UseBasicParsing -TimeoutSec 2
+                if ($response.StatusCode -eq 200) {
+                    $secondStarted = $true
+                    break
+                }
+            }
+            catch {
+                Start-Sleep -Milliseconds 500
+            }
+        }
+        if (-not $secondStarted) {
+            throw "The second CoverScope process did not become ready at $secondFallbackUrl."
+        }
+
+        $baseUrl = "http://coverscope.localhost:$secondPort"
+        $thirdBrowser = Start-CoverScopeBrowser (Join-Path $root "browser-third")
+        $browserProcesses += $thirdBrowser
+        $secondRunCompleted = $false
+        for ($attempt = 0; $attempt -lt 120; $attempt++) {
+            $runDirectories = @(Get-ChildItem -Path $coverageRoot -Directory)
+            if ($runDirectories.Count -gt $initialRunCount) {
+                $terminalManifests = @($runDirectories | ForEach-Object {
+                    $path = Join-Path $_.FullName "run.json"
+                    if (Test-Path $path) {
+                        Get-Content -Raw -Path $path | ConvertFrom-Json
+                    }
+                } | Where-Object { $_.status -eq "completed" })
+                if ($terminalManifests.Count -gt $initialRunCount) {
+                    $secondRunCompleted = $true
+                    break
+                }
+            }
+            Start-Sleep -Milliseconds 500
+        }
+        if (-not $secondRunCompleted) {
+            throw "Running the installed tool twice did not preserve two separate completed runs."
+        }
+
+        Write-Host "Automatic explicit-target collection ran once per process and preserved two completed runs."
     }
 
     Write-Host "Smoke test passed at $baseUrl."
@@ -251,21 +344,23 @@ finally {
             $browserProcess.Dispose()
         }
     }
-    if ($null -ne $process -and -not $process.HasExited) {
-        if (-not $IsWindows) {
-            & /bin/kill -INT $process.Id
-            if (-not $process.WaitForExit(10000)) {
-                $process.Kill($true)
+    foreach ($toolProcess in @($secondaryProcess, $process)) {
+        if ($null -ne $toolProcess -and -not $toolProcess.HasExited) {
+            if (-not $IsWindows) {
+                & /bin/kill -INT $toolProcess.Id
+                if (-not $toolProcess.WaitForExit(10000)) {
+                    $toolProcess.Kill($true)
+                }
+            }
+            else {
+                $toolProcess.Kill($true)
+                $toolProcess.WaitForExit()
             }
         }
-        else {
-            $process.Kill($true)
-            $process.WaitForExit()
-        }
-    }
 
-    if ($null -ne $process) {
-        $process.Dispose()
+        if ($null -ne $toolProcess) {
+            $toolProcess.Dispose()
+        }
     }
 
     if (Test-Path $root) {
