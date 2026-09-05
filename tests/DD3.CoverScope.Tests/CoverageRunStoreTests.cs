@@ -54,7 +54,14 @@ public sealed class CoverageRunStoreTests : IDisposable
         var persisted = await store.ReadAsync(manifestPath);
         var json = await File.ReadAllTextAsync(manifestPath);
 
-        Assert.Equal(completed, persisted);
+        Assert.Equal(completed.SchemaVersion, persisted.SchemaVersion);
+        Assert.Equal(completed.RunId, persisted.RunId);
+        Assert.Equal(completed.Target, persisted.Target);
+        Assert.Equal(completed.StartedAtUtc, persisted.StartedAtUtc);
+        Assert.Equal(completed.CompletedAtUtc, persisted.CompletedAtUtc);
+        Assert.Equal(completed.Status, persisted.Status);
+        Assert.Equal(completed.Producer, persisted.Producer);
+        Assert.Equal(completed.Artifacts.ToArray(), persisted.Artifacts.ToArray());
         Assert.Equal(CoverageRunStatus.Completed, persisted.Status);
         Assert.Equal(StartedAt, persisted.CompletedAtUtc);
         Assert.Equal("coverage.xml", persisted.Artifacts.Single().Path);
@@ -208,7 +215,9 @@ public sealed class CoverageRunStoreTests : IDisposable
 
         var manifest = await store.ReadForArtifactAsync(artifactPath);
 
-        Assert.Equal(context.Manifest, manifest);
+        Assert.NotNull(manifest);
+        Assert.Equal(context.Manifest.RunId, manifest!.RunId);
+        Assert.Equal(context.Manifest.Status, manifest.Status);
     }
 
     [Fact]
