@@ -3,7 +3,7 @@ using Xunit;
 
 namespace DD3.CoverScope.Tests;
 
-public sealed class CoverScopeHostTests
+public partial class CoverScopeHostTests
 {
     [Theory]
     [InlineData("http://127.0.0.1:43127", "http://coverscope.localhost:43127")]

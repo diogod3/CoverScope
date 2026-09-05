@@ -2,6 +2,9 @@ using System.Globalization;
 using DD3.CoverScope;
 using DD3.CoverScope.Models;
 using DD3.CoverScope.Services;
+using DD3.CoverScope.Brokers.Diagnostics;
+using DD3.CoverScope.Brokers.FileSystems;
+using DD3.CoverScope.Services.Foundations.CoverageTargets;
 using Xunit;
 
 namespace DD3.CoverScope.Tests;
@@ -24,7 +27,7 @@ public sealed class CoverageRunStoreTests : IDisposable
         var targetPath = CreateTarget($"Sample{extension}");
         var store = CreateStore();
 
-        var context = await store.BeginAsync(targetPath);
+        var context = await BeginRunAsync(store, targetPath);
         var manifestPath = Path.Combine(context.DirectoryPath, "run.json");
         var persisted = await store.ReadAsync(manifestPath);
 
@@ -42,7 +45,7 @@ public sealed class CoverageRunStoreTests : IDisposable
     public async Task CompleteAsync_RoundTripsUtcManifestAndRelativeArtifacts()
     {
         var store = CreateStore();
-        var context = await store.BeginAsync(CreateTarget("Sample.sln"));
+        var context = await BeginRunAsync(store, CreateTarget("Sample.sln"));
         var coveragePath = Path.Combine(context.DirectoryPath, "coverage.xml");
         await File.WriteAllTextAsync(coveragePath, "<coverage />");
 
@@ -78,7 +81,7 @@ public sealed class CoverageRunStoreTests : IDisposable
     public async Task CompleteAsync_RoundTripsEveryTerminalStatus(CoverageRunStatus status)
     {
         var store = CreateStore();
-        var context = await store.BeginAsync(CreateTarget($"{status}.sln"));
+        var context = await BeginRunAsync(store, CreateTarget($"{status}.sln"));
 
         await store.CompleteAsync(context, status, []);
         var persisted = await store.ReadAsync(Path.Combine(context.DirectoryPath, "run.json"));
@@ -106,7 +109,7 @@ public sealed class CoverageRunStoreTests : IDisposable
     public async Task CompleteAsync_RejectsArtifactTraversal()
     {
         var store = CreateStore();
-        var context = await store.BeginAsync(CreateTarget("Sample.sln"));
+        var context = await BeginRunAsync(store, CreateTarget("Sample.sln"));
 
         var exception = await Assert.ThrowsAsync<InvalidDataException>(() =>
             store.CompleteAsync(
@@ -121,7 +124,7 @@ public sealed class CoverageRunStoreTests : IDisposable
     public async Task CompleteAsync_RejectsMissingArtifact()
     {
         var store = CreateStore();
-        var context = await store.BeginAsync(CreateTarget("Sample.sln"));
+        var context = await BeginRunAsync(store, CreateTarget("Sample.sln"));
 
         await Assert.ThrowsAsync<FileNotFoundException>(() =>
             store.CompleteAsync(
@@ -134,7 +137,7 @@ public sealed class CoverageRunStoreTests : IDisposable
     public async Task ReadAsync_RejectsUnsupportedSchemaVersion()
     {
         var store = CreateStore();
-        var context = await store.BeginAsync(CreateTarget("Sample.sln"));
+        var context = await BeginRunAsync(store, CreateTarget("Sample.sln"));
         var manifestPath = Path.Combine(context.DirectoryPath, "run.json");
         var json = await File.ReadAllTextAsync(manifestPath);
         await File.WriteAllTextAsync(manifestPath, json.Replace("\"schemaVersion\": 1", "\"schemaVersion\": 2"));
@@ -148,7 +151,7 @@ public sealed class CoverageRunStoreTests : IDisposable
     public async Task ReadAsync_RejectsMalformedManifest()
     {
         var store = CreateStore();
-        var context = await store.BeginAsync(CreateTarget("Sample.sln"));
+        var context = await BeginRunAsync(store, CreateTarget("Sample.sln"));
         var manifestPath = Path.Combine(context.DirectoryPath, "run.json");
         await File.WriteAllTextAsync(manifestPath, "{ \"schemaVersion\":");
 
@@ -161,7 +164,7 @@ public sealed class CoverageRunStoreTests : IDisposable
     public async Task ReadAsync_IgnoresUnknownFutureProperties()
     {
         var store = CreateStore();
-        var context = await store.BeginAsync(CreateTarget("Sample.sln"));
+        var context = await BeginRunAsync(store, CreateTarget("Sample.sln"));
         var manifestPath = Path.Combine(context.DirectoryPath, "run.json");
         var json = await File.ReadAllTextAsync(manifestPath);
         await File.WriteAllTextAsync(manifestPath, json.Replace(
@@ -182,8 +185,8 @@ public sealed class CoverageRunStoreTests : IDisposable
         var store = CreateStore(() => guids.Dequeue());
         var targetPath = CreateTarget("Sample.sln");
 
-        var first = await store.BeginAsync(targetPath);
-        var second = await store.BeginAsync(targetPath);
+        var first = await BeginRunAsync(store, targetPath);
+        var second = await BeginRunAsync(store, targetPath);
 
         Assert.NotEqual(first.Manifest.RunId, second.Manifest.RunId);
         Assert.True(File.Exists(Path.Combine(first.DirectoryPath, "run.json")));
@@ -197,7 +200,7 @@ public sealed class CoverageRunStoreTests : IDisposable
         var targetPath = CreateTarget("Sample.sln");
 
         var runs = await Task.WhenAll(
-            Enumerable.Range(0, 16).Select(_ => store.BeginAsync(targetPath)));
+            Enumerable.Range(0, 16).Select(_ => BeginRunAsync(store, targetPath)));
 
         Assert.Equal(runs.Length, runs.Select(run => run.Manifest.RunId).Distinct(StringComparer.Ordinal).Count());
         Assert.All(runs, run => Assert.True(File.Exists(Path.Combine(run.DirectoryPath, "run.json"))));
@@ -207,7 +210,7 @@ public sealed class CoverageRunStoreTests : IDisposable
     public async Task ReadForArtifactAsync_DiscoversManifestAboveNestedCollectorOutput()
     {
         var store = CreateStore();
-        var context = await store.BeginAsync(CreateTarget("Sample.sln"));
+        var context = await BeginRunAsync(store, CreateTarget("Sample.sln"));
         var nestedDirectory = Path.Combine(context.DirectoryPath, "collector-id");
         Directory.CreateDirectory(nestedDirectory);
         var artifactPath = Path.Combine(nestedDirectory, "coverage.cobertura.xml");
@@ -235,13 +238,24 @@ public sealed class CoverageRunStoreTests : IDisposable
     }
 
     [Fact]
-    public void ResolveTargetRoot_MatchesCommandLineTargetResolution()
+    public async Task ResolveTargetRoot_MatchesCommandLineTargetResolution()
     {
         var targetPath = CreateTarget("Sample.sln");
         var parsed = CoverScopeCommandLine.Parse(["Sample.sln"], directory);
 
         Assert.True(parsed.Success);
-        Assert.Equal(directory, CoverageRunStore.ResolveTargetRoot(parsed.Options!.TargetPath!));
+        var targetService = new CoverageTargetService(new FileSystemBroker(), new DiagnosticsBroker());
+        var target = await targetService.RetrieveCoverageTargetAsync(
+            parsed.Options!.TargetPath!, parsed.Options.InvocationDirectory);
+
+        Assert.Equal(directory, CoverageRunStore.ResolveTargetRoot(target.Path));
+    }
+
+    private async Task<CoverageRunContext> BeginRunAsync(CoverageRunStore store, string path)
+    {
+        var targetService = new CoverageTargetService(new FileSystemBroker(), new DiagnosticsBroker());
+        var target = await targetService.RetrieveCoverageTargetAsync(path, directory);
+        return await store.BeginAsync(target);
     }
 
     private CoverageRunStore CreateStore(Func<Guid>? createGuid = null)

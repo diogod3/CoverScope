@@ -616,7 +616,7 @@ else
             return;
         }
 
-        var result = SolutionBrowser.ValidateSelection(entry.Path);
+        var result = await SolutionBrowser.ValidateSelectionAsync(entry.Path);
         if (!result.Success || result.SelectedPath is null)
         {
             browserError = result.Message;
@@ -664,7 +664,7 @@ else
         try
         {
             await SettingsStore.SaveAsync(settings);
-            var result = await Runner.RunAsync(solutionPath, settings, progress: progress);
+            var result = await Runner.RunAsync(solutionPath, LaunchContext.InvocationDirectory, settings, progress: progress);
             statusMessage = result.Message;
             statusIsError = result.Outcome != CoverageRunOutcome.Succeeded;
             runOutput = result.Output;

@@ -1,4 +1,8 @@
 using System.Diagnostics;
+using DD3.CoverScope.Brokers.Diagnostics;
+using DD3.CoverScope.Brokers.FileSystems;
+using DD3.CoverScope.Models.CoverageTargets.Exceptions;
+using DD3.CoverScope.Services.Foundations.CoverageTargets;
 using DD3.CoverScope.Components;
 using DD3.CoverScope.Services;
 using Microsoft.AspNetCore.Hosting.Server;
@@ -46,6 +50,31 @@ internal static class CoverScopeHost
             return 0;
         }
 
+        var fileSystemBroker = new FileSystemBroker();
+        var diagnosticsBroker = new DiagnosticsBroker();
+        var targetService = new CoverageTargetService(fileSystemBroker, diagnosticsBroker);
+
+        if (options.TargetPath is not null)
+        {
+            try
+            {
+                var target = await targetService.RetrieveCoverageTargetAsync(
+                    options.TargetPath, options.InvocationDirectory);
+                options = options with { TargetPath = target.Path };
+            }
+            catch (CoverageTargetValidationException exception)
+            {
+                Console.Error.WriteLine($"coverscope: {exception.Message}");
+                Console.Error.WriteLine("Run 'coverscope --help' for usage.");
+                return 2;
+            }
+            catch (CoverageTargetException exception)
+            {
+                Console.Error.WriteLine($"coverscope: {exception.Message}");
+                return 1;
+            }
+        }
+
         var applicationDirectory = AppContext.BaseDirectory;
         var packagedWebRoot = Path.Combine(applicationDirectory, "wwwroot");
         var contentRoot = ResolveContentRoot(applicationDirectory, invocationDirectory);
@@ -67,7 +96,11 @@ internal static class CoverScopeHost
             .AddInteractiveServerComponents();
         builder.Services.AddSingleton(new CoverScopeLaunchContext(options.InvocationDirectory, options.TargetPath));
         builder.Services.AddSingleton<StartupCoverageCoordinator>();
-        builder.Services.AddSingleton(new SolutionFileBrowser(options.InvocationDirectory));
+        builder.Services.AddSingleton<IFileSystemBroker>(fileSystemBroker);
+        builder.Services.AddSingleton<IDiagnosticsBroker>(diagnosticsBroker);
+        builder.Services.AddSingleton<ICoverageTargetService>(targetService);
+        builder.Services.AddSingleton(new SolutionFileBrowser(
+            options.InvocationDirectory, fileSystemBroker, targetService));
         builder.Services.AddSingleton<CoberturaParser>();
         builder.Services.AddSingleton<CoberturaReportMerger>();
         builder.Services.AddSingleton<CoverletRunSettingsWriter>();

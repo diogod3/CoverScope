@@ -1,3 +1,8 @@
+using DD3.CoverScope.Brokers.FileSystems;
+using DD3.CoverScope.Models.CoverageTargets;
+using DD3.CoverScope.Models.CoverageTargets.Exceptions;
+using DD3.CoverScope.Services.Foundations.CoverageTargets;
+
 namespace DD3.CoverScope.Services;
 
 public sealed record SolutionBrowserLocation(string Label, string Path);
@@ -14,13 +19,19 @@ public sealed record SolutionSelectionResult(bool Success, string? SelectedPath,
 
 public sealed class SolutionFileBrowser
 {
-    private static readonly string[] AllowedExtensions = [".sln", ".slnx", ".csproj", ".fsproj", ".vbproj"];
     private readonly string initialDirectory;
+    private readonly IFileSystemBroker fileSystemBroker;
+    private readonly ICoverageTargetService targetService;
 
-    public SolutionFileBrowser() : this(Environment.CurrentDirectory) { }
-
-    public SolutionFileBrowser(string initialDirectory) =>
+    public SolutionFileBrowser(
+        string initialDirectory,
+        IFileSystemBroker fileSystemBroker,
+        ICoverageTargetService targetService)
+    {
         this.initialDirectory = Path.GetFullPath(initialDirectory);
+        this.fileSystemBroker = fileSystemBroker;
+        this.targetService = targetService;
+    }
 
     public SolutionBrowserSnapshot Open(string? currentSelection = null) =>
         Browse(ResolveInitialDirectory(currentSelection));
@@ -30,17 +41,17 @@ public sealed class SolutionFileBrowser
         try
         {
             var fullPath = Path.GetFullPath(directoryPath);
-            if (!Directory.Exists(fullPath))
+            if (!fileSystemBroker.DirectoryExists(fullPath))
                 return new(fullPath, null, [], "That folder does not exist or is not accessible.");
 
             var entries = new List<SolutionBrowserEntry>();
-            foreach (var directory in Directory.EnumerateDirectories(fullPath))
+            foreach (var directory in fileSystemBroker.EnumerateDirectories(fullPath))
             {
                 var name = Path.GetFileName(Path.TrimEndingDirectorySeparator(directory));
                 entries.Add(new(name.Length == 0 ? directory : name, directory, true));
             }
 
-            foreach (var file in Directory.EnumerateFiles(fullPath).Where(IsSupportedFile))
+            foreach (var file in fileSystemBroker.EnumerateFiles(fullPath).Where(IsSupportedFile))
                 entries.Add(new(Path.GetFileName(file), file, false));
 
             var ordered = entries
@@ -84,25 +95,22 @@ public sealed class SolutionFileBrowser
         return locations;
     }
 
-    public SolutionSelectionResult ValidateSelection(string selectedPath)
+    public async ValueTask<SolutionSelectionResult> ValidateSelectionAsync(string selectedPath)
     {
         try
         {
-            var fullPath = Path.GetFullPath(selectedPath);
-            if (!File.Exists(fullPath))
-                return new(false, null, "The selected solution or project no longer exists.");
-            if (!IsSupportedFile(fullPath))
-                return new(false, null, "Select a .sln, .slnx, .csproj, .fsproj, or .vbproj file.");
-            return new(true, fullPath, "Solution selected.");
+            var target = await targetService.RetrieveCoverageTargetAsync(
+                selectedPath, initialDirectory);
+            return new(true, target.Path, "Solution selected.");
         }
-        catch (Exception ex) when (ex is ArgumentException or NotSupportedException or PathTooLongException)
+        catch (CoverageTargetException exception)
         {
-            return new(false, null, "The selected path is invalid.");
+            return new(false, null, exception.Message);
         }
     }
 
     internal static bool IsSupportedFile(string path) =>
-        AllowedExtensions.Contains(Path.GetExtension(path), StringComparer.OrdinalIgnoreCase);
+        CoverageTargetFileExtensions.TryGetTargetType(path, out _);
 
     private string ResolveInitialDirectory(string? currentSelection)
     {
@@ -111,8 +119,8 @@ public sealed class SolutionFileBrowser
             try
             {
                 var fullPath = Path.GetFullPath(currentSelection);
-                if (Directory.Exists(fullPath)) return fullPath;
-                if (File.Exists(fullPath)) return Path.GetDirectoryName(fullPath) ?? initialDirectory;
+                if (fileSystemBroker.DirectoryExists(fullPath)) return fullPath;
+                if (fileSystemBroker.FileExists(fullPath)) return Path.GetDirectoryName(fullPath) ?? initialDirectory;
             }
             catch (Exception ex) when (ex is ArgumentException or NotSupportedException or PathTooLongException)
             {
@@ -121,14 +129,14 @@ public sealed class SolutionFileBrowser
             }
         }
 
-        if (Directory.Exists(initialDirectory)) return initialDirectory;
+        if (fileSystemBroker.DirectoryExists(initialDirectory)) return initialDirectory;
         var home = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
-        return Directory.Exists(home) ? home : Environment.CurrentDirectory;
+        return fileSystemBroker.DirectoryExists(home) ? home : Environment.CurrentDirectory;
     }
 
-    private static void AddLocation(List<SolutionBrowserLocation> locations, string label, string path)
+    private void AddLocation(List<SolutionBrowserLocation> locations, string label, string path)
     {
-        if (string.IsNullOrWhiteSpace(path) || !Directory.Exists(path)) return;
+        if (string.IsNullOrWhiteSpace(path) || !fileSystemBroker.DirectoryExists(path)) return;
         var fullPath = Path.GetFullPath(path);
         if (locations.Any(location => string.Equals(location.Path, fullPath, StringComparison.OrdinalIgnoreCase))) return;
         locations.Add(new(label, fullPath));

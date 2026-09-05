@@ -3,6 +3,7 @@ using System.Reflection;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using DD3.CoverScope.Models;
+using DD3.CoverScope.Models.CoverageTargets;
 
 namespace DD3.CoverScope.Services;
 
@@ -23,14 +24,13 @@ public sealed class CoverageRunStore
     }
 
     public async Task<CoverageRunContext> BeginAsync(
-        string targetPath,
+        CoverageTarget target,
         CancellationToken cancellationToken = default)
     {
-        var fullTargetPath = Path.GetFullPath(targetPath);
-        if (!File.Exists(fullTargetPath))
-            throw new FileNotFoundException("The selected solution or project does not exist.", fullTargetPath);
-        if (!SolutionFileBrowser.IsSupportedFile(fullTargetPath))
-            throw new ArgumentException("Select a .sln, .slnx, or supported project file.", nameof(targetPath));
+        ArgumentNullException.ThrowIfNull(target);
+        var fullTargetPath = target.Path;
+        if (string.IsNullOrWhiteSpace(fullTargetPath) || !Path.IsPathFullyQualified(fullTargetPath))
+            throw new ArgumentException("A resolved target with an absolute path is required.", nameof(target));
 
         var targetRoot = ResolveTargetRoot(fullTargetPath);
         var reportsRoot = Path.Combine(targetRoot, ".coverscope", "reports");
@@ -89,16 +89,12 @@ public sealed class CoverageRunStore
         if (runId is null || runDirectory is null)
             throw new IOException($"CoverScope could not allocate a unique run directory under '{reportsRoot}'.");
 
-        var extension = Path.GetExtension(fullTargetPath);
-        var targetKind = extension.Equals(".sln", StringComparison.OrdinalIgnoreCase)
-            || extension.Equals(".slnx", StringComparison.OrdinalIgnoreCase)
-                ? "solution"
-                : "project";
+        var targetKind = target.Type == CoverageTargetType.Solution ? "solution" : "project";
         var manifest = new CoverageRunManifest(
             SupportedSchemaVersion,
             runId,
             new CoverageRunTarget(
-                Path.GetFileNameWithoutExtension(fullTargetPath),
+                target.Name,
                 targetKind,
                 Path.GetRelativePath(targetRoot, fullTargetPath)),
             timeProvider.GetUtcNow(),

@@ -1,4 +1,7 @@
 using DD3.CoverScope.Services;
+using DD3.CoverScope.Brokers.Diagnostics;
+using DD3.CoverScope.Brokers.FileSystems;
+using DD3.CoverScope.Services.Foundations.CoverageTargets;
 using Xunit;
 
 namespace DD3.CoverScope.Tests;
@@ -6,9 +9,20 @@ namespace DD3.CoverScope.Tests;
 public sealed class SolutionFileBrowserTests : IDisposable
 {
     private readonly string directory = Path.Combine(Path.GetTempPath(), $"coverscope-browser-{Guid.NewGuid():N}");
-    private readonly SolutionFileBrowser browser = new();
+    private readonly SolutionFileBrowser browser;
 
-    public SolutionFileBrowserTests() => Directory.CreateDirectory(directory);
+    public SolutionFileBrowserTests()
+    {
+        Directory.CreateDirectory(directory);
+        browser = CreateBrowser();
+    }
+
+    private SolutionFileBrowser CreateBrowser()
+    {
+        var fileSystemBroker = new FileSystemBroker();
+        var targetService = new CoverageTargetService(fileSystemBroker, new DiagnosticsBroker());
+        return new SolutionFileBrowser(directory, fileSystemBroker, targetService);
+    }
 
     [Fact]
     public void Browse_ListsDirectoriesAndSupportedFilesOnly()
@@ -31,24 +45,24 @@ public sealed class SolutionFileBrowserTests : IDisposable
     [InlineData("Demo.csproj")]
     [InlineData("Demo.fsproj")]
     [InlineData("Demo.vbproj")]
-    public void ValidateSelection_AcceptsSupportedExistingFiles(string filename)
+    public async Task ValidateSelection_AcceptsSupportedExistingFiles(string filename)
     {
         var path = Path.Combine(directory, filename);
         File.WriteAllText(path, string.Empty);
 
-        var result = browser.ValidateSelection(path);
+        var result = await browser.ValidateSelectionAsync(path);
 
         Assert.True(result.Success);
         Assert.Equal(Path.GetFullPath(path), result.SelectedPath);
     }
 
     [Fact]
-    public void ValidateSelection_RejectsUnsupportedFiles()
+    public async Task ValidateSelection_RejectsUnsupportedFiles()
     {
         var path = Path.Combine(directory, "Demo.txt");
         File.WriteAllText(path, string.Empty);
 
-        var result = browser.ValidateSelection(path);
+        var result = await browser.ValidateSelectionAsync(path);
 
         Assert.False(result.Success);
         Assert.Null(result.SelectedPath);
@@ -57,7 +71,7 @@ public sealed class SolutionFileBrowserTests : IDisposable
     [Fact]
     public void Open_StartsFromConfiguredInvocationDirectory()
     {
-        var configuredBrowser = new SolutionFileBrowser(directory);
+        var configuredBrowser = CreateBrowser();
 
         var result = configuredBrowser.Open();
 

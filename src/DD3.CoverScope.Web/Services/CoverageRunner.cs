@@ -1,52 +1,56 @@
 using System.Diagnostics;
 using DD3.CoverScope.Models;
+using DD3.CoverScope.Models.CoverageTargets.Exceptions;
+using DD3.CoverScope.Services.Foundations.CoverageTargets;
 
 namespace DD3.CoverScope.Services;
 
-public sealed class CoverageRunner
+public partial class CoverageRunner
 {
     private readonly CoberturaReportMerger merger;
     private readonly CoverletRunSettingsWriter settingsWriter;
     private readonly TrxTestResultParser testResultParser;
     private readonly CoverageRunStore runStore;
+    private readonly ICoverageTargetService targetService;
 
     public CoverageRunner(
         CoberturaReportMerger merger,
         CoverletRunSettingsWriter settingsWriter,
         TrxTestResultParser testResultParser,
-        CoverageRunStore runStore)
+        CoverageRunStore runStore,
+        ICoverageTargetService targetService)
     {
         this.merger = merger;
         this.settingsWriter = settingsWriter;
         this.testResultParser = testResultParser;
         this.runStore = runStore;
+        this.targetService = targetService;
     }
 
     public async Task<CoverageRunResult> RunAsync(
         string solutionPath,
+        string baseDirectory,
         CoverageSettings settings,
         CancellationToken cancellationToken = default,
         IProgress<CoverageCollectionPhase>? progress = null)
     {
         progress?.Report(CoverageCollectionPhase.PreparingCollection);
 
-        if (string.IsNullOrWhiteSpace(solutionPath))
-            return new(CoverageRunOutcome.ExecutionFailed, "Choose a .sln, .slnx, or test project first.", string.Empty);
-
-        var fullPath = Path.GetFullPath(solutionPath);
-        if (!File.Exists(fullPath))
-            return new(CoverageRunOutcome.ExecutionFailed, "The selected solution or project does not exist.", string.Empty);
-
-        var allowedExtensions = new[] { ".sln", ".slnx", ".csproj", ".fsproj", ".vbproj" };
-        if (!allowedExtensions.Contains(Path.GetExtension(fullPath), StringComparer.OrdinalIgnoreCase))
-            return new(CoverageRunOutcome.ExecutionFailed, "Select a .sln, .slnx, or supported project file.", string.Empty);
-
+        string fullPath;
         CoverageRunContext run;
         try
         {
-            run = await runStore.BeginAsync(fullPath, cancellationToken);
+            var target = await targetService.RetrieveCoverageTargetAsync(
+                solutionPath, baseDirectory, cancellationToken);
+            fullPath = target.Path;
+            run = await runStore.BeginAsync(target, cancellationToken);
         }
-        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or ArgumentException)
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            return new(CoverageRunOutcome.Cancelled, "The coverage run was cancelled.", string.Empty);
+        }
+        catch (Exception ex) when (
+            ex is CoverageTargetException or IOException or UnauthorizedAccessException or ArgumentException)
         {
             return new(CoverageRunOutcome.ExecutionFailed, ex.Message, string.Empty);
         }

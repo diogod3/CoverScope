@@ -2,7 +2,7 @@ using System.Reflection;
 
 namespace DD3.CoverScope;
 
-internal sealed record CoverScopeCommandLineOptions(
+internal record CoverScopeCommandLineOptions(
     string InvocationDirectory,
     string? TargetPath,
     bool OpenBrowser,
@@ -10,7 +10,7 @@ internal sealed record CoverScopeCommandLineOptions(
     bool ShowHelp,
     bool ShowVersion);
 
-internal sealed record CoverScopeCommandLineResult(
+internal record CoverScopeCommandLineResult(
     CoverScopeCommandLineOptions? Options,
     string? ErrorMessage)
 {
@@ -89,14 +89,7 @@ internal static class CoverScopeCommandLine
         }
 
         var fullInvocationDirectory = Path.GetFullPath(invocationDirectory);
-        if (targetPath is not null && !showHelp && !showVersion)
-        {
-            targetPath = Path.GetFullPath(targetPath, fullInvocationDirectory);
-            if (!File.Exists(targetPath))
-                return Failure($"The solution or project does not exist: {targetPath}");
-            if (!Services.SolutionFileBrowser.IsSupportedFile(targetPath))
-                return Failure("The target must be a .sln, .slnx, .csproj, .fsproj, or .vbproj file.");
-        }
+        // Preserve user input. The target foundation service resolves and validates it.
 
         return new(new(fullInvocationDirectory, targetPath, openBrowser, port, showHelp, showVersion), null);
     }
