@@ -73,6 +73,9 @@ internal static class CoverScopeHost
         builder.Services.AddSingleton<CoverletRunSettingsWriter>();
         builder.Services.AddSingleton<CoverageSettingsStore>();
         builder.Services.AddSingleton<TrxTestResultParser>();
+        builder.Services.AddSingleton(TimeProvider.System);
+        builder.Services.AddSingleton<CoverageRunIdGenerator>();
+        builder.Services.AddSingleton<CoverageRunStore>();
         builder.Services.AddSingleton<CoverageRunner>();
         builder.Services.AddSingleton<CoverageMetricsBuilder>();
         builder.Services.AddScoped<CoverageWorkspaceProjectionCache>();

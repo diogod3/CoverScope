@@ -2,6 +2,7 @@
 @rendermode InteractiveServer
 @inject CoberturaParser Parser
 @inject CoverageRunner Runner
+@inject CoverageRunStore RunStore
 @inject CoverageSettingsStore SettingsStore
 @inject SolutionFileBrowser SolutionBrowser
 @inject CoverageWorkspaceProjectionCache Projections
@@ -279,7 +280,13 @@ else if (report is not null)
     <section class="workspace-header">
         <div>
             <span class="eyebrow">COVERAGE WORKSPACE</span>
-            <h2>@report.Name</h2>
+            <div class="report-title-row" title="@RunDetailsTitle">
+                <h2>@report.Name</h2>
+                @if (currentRun is not null)
+                {
+                    <span class="run-status-badge @RunStatusClass">@CoverageRunLabelFormatter.StatusLabel(currentRun.Status)</span>
+                }
+            </div>
             <p>@report.Packages.Count projects · @report.Files.Count files · generated @report.GeneratedAt.ToLocalTime().ToString("g")</p>
         </div>
         <div class="report-actions">
@@ -489,8 +496,10 @@ else
     private string filter = string.Empty;
     private string? statusMessage;
     private string? runOutput;
+    private string? importedReportName;
     private bool statusIsError;
     private CoverageRunOutcome? lastRunOutcome;
+    private CoverageRunManifest? currentRun;
     private TestRunSummary? testSummary;
     private bool isBusy;
     private bool isPickingSolution;
@@ -661,6 +670,7 @@ else
             runOutput = result.Output;
             lastRunOutcome = result.Outcome;
             testSummary = result.Tests;
+            currentRun = result.Run;
             if (result.ReportPath is not null
                 && result.Outcome is CoverageRunOutcome.Succeeded or CoverageRunOutcome.TestsFailed)
             {
@@ -694,6 +704,8 @@ else
     private Task OpenReport()
     {
         ClearTestRunResult();
+        currentRun = null;
+        importedReportName = null;
         return LoadReport();
     }
 
@@ -702,6 +714,8 @@ else
         try
         {
             ClearTestRunResult();
+            currentRun = null;
+            importedReportName = Path.GetFileNameWithoutExtension(args.File.Name);
             var importDirectory = Path.Combine(
                 Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
                 "CoverScope",
@@ -728,6 +742,19 @@ else
         try
         {
             report = Parser.Parse(reportPath, sourceRoot);
+            currentRun ??= await RunStore.ReadForArtifactAsync(reportPath);
+            if (currentRun is not null)
+            {
+                report = report with
+                {
+                    Name = CoverageRunLabelFormatter.Format(currentRun),
+                    GeneratedAt = currentRun.StartedAtUtc
+                };
+            }
+            else if (!string.IsNullOrWhiteSpace(importedReportName))
+            {
+                report = report with { Name = importedReportName };
+            }
             workspaceMode = WorkspaceMode.Metrics;
             selectedFile = null;
             selectedClass = null;
@@ -744,7 +771,8 @@ else
             }
             isSetupOpen = preserveRunStatus;
         }
-        catch (Exception ex) when (ex is ArgumentException or IOException or UnauthorizedAccessException or System.Xml.XmlException)
+        catch (Exception ex) when (ex is ArgumentException or IOException or UnauthorizedAccessException
+            or System.Xml.XmlException or NotSupportedException)
         {
             report = null;
             selectedFile = null;
@@ -761,6 +789,19 @@ else
         testSummary = null;
         runOutput = null;
     }
+
+    private string? RunDetailsTitle => currentRun is null
+        ? null
+        : $"Run {currentRun.RunId} · {currentRun.StartedAtUtc:O}";
+
+    private string RunStatusClass => currentRun?.Status switch
+    {
+        CoverageRunStatus.Completed => "completed",
+        CoverageRunStatus.CompletedWithTestFailures => "test-failures",
+        CoverageRunStatus.InProgress => "incomplete",
+        CoverageRunStatus.Cancelled => "cancelled",
+        _ => "failed"
+    };
 
     private static string FailureHeading(int count) => count == 1 ? "1 test failed" : $"{count} tests failed";
 

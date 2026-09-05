@@ -77,7 +77,7 @@ Install the tool:
 
 ```bash
 dotnet tool install --global DD3.CoverScope.Tool \
-  --version 0.1.0-beta.2 \
+  --version 0.1.0-beta.3 \
   --add-source https://nuget.pkg.github.com/diogod3/index.json
 ```
 
@@ -151,7 +151,17 @@ CoverScope runs the equivalent of:
 dotnet test --collect:"XPlat Code Coverage"
 ```
 
-Generated reports are stored beside the selected target under `coverage-output/`. This directory is ignored by Git.
+Each coverage attempt is stored beside the selected target in its own
+`<target-root>/.coverscope/reports/<run-id>/` directory. The directory contains
+the coverage and test-result artifacts together with a versioned `run.json`
+manifest. CoverScope does not modify Git ignore files, so repositories that
+should not track generated reports should add:
+
+```gitignore
+.coverscope/reports/
+```
+
+Existing `coverage-output/` directories are left untouched.
 
 If tests fail, CoverScope presents the failed tests separately from infrastructure or collection errors. When a usable coverage report was still produced, it remains available with a visible failed-run warning.
 
@@ -171,8 +181,8 @@ Build and inspect the tool package:
 
 ```bash
 dotnet pack src/DD3.CoverScope.Web/DD3.CoverScope.Web.csproj --configuration Release
-pwsh ./scripts/Inspect-Package.ps1 -PackagePath ./artifacts/packages/DD3.CoverScope.Tool.0.1.0-beta.2.nupkg
-pwsh ./scripts/Smoke-Test.ps1 -PackagePath ./artifacts/packages/DD3.CoverScope.Tool.0.1.0-beta.2.nupkg
+pwsh ./scripts/Inspect-Package.ps1 -PackagePath ./artifacts/packages/DD3.CoverScope.Tool.0.1.0-beta.3.nupkg
+pwsh ./scripts/Smoke-Test.ps1 -PackagePath ./artifacts/packages/DD3.CoverScope.Tool.0.1.0-beta.3.nupkg
 ```
 
 ## Maintainer release process
@@ -185,14 +195,14 @@ To prepare a release:
 1. Update `Version` in
    `src/DD3.CoverScope.Web/DD3.CoverScope.Web.csproj`.
 2. Commit the version change using Conventional Commits, for example
-   `chore(release): prepare v0.1.0-beta.2`.
+   `chore(release): prepare v0.1.0-beta.3`.
 3. Merge the validated pull request into `main`.
 4. Create and push an annotated `v*` tag whose value exactly matches the
    project version with a leading `v`.
 
 ```bash
-git tag -a v0.1.0-beta.2 -m "v0.1.0-beta.2"
-git push origin v0.1.0-beta.2
+git tag -a v0.1.0-beta.3 -m "v0.1.0-beta.3"
+git push origin v0.1.0-beta.3
 ```
 
 The release workflow validates the tag against the project version, runs the
