@@ -1,0 +1,146 @@
+@using DD3.CoverScope.Components.Shared
+@using DD3.CoverScope.Services
+@using DD3.CoverScope.Models
+
+<PageTitle>CoverScope · .NET coverage explorer and metrics</PageTitle>
+
+<div class="coverage-app">
+    <CoverageCommandBar TargetPath="@solutionPath" IsBusy="isBusy" IsPickingSolution="isPickingSolution"
+        Report="report" Mode="workspaceMode" LastRunOutcome="lastRunOutcome" Tests="testSummary"
+        OnShowRunSetup="ShowRunSetup" OnShowMetrics="ShowMetrics" OnShowExplorer="ShowExplorer"
+        OnShowImportSetup="ShowImportSetup" OnRunCoverage="RunCoverage" />
+
+    @if (isSetupOpen)
+    {
+        <div class="topbar-extension-layer" @onclick="CloseSetup">
+            <section class="topbar-extension" role="dialog" aria-modal="true" aria-labelledby="setup-title" @onclick:stopPropagation="true">
+                <div class="extension-inner">
+                    <header class="setup-header">
+                        <div>
+                            <span class="eyebrow">COLLECTION</span>
+                            <h2 id="setup-title">@(mode == Mode.Run ? "Run coverage" : "Open coverage report")</h2>
+                        </div>
+                        <div class="setup-tabs" role="tablist">
+                            <button class="@(mode == Mode.Run ? "active" : null)" @onclick="ShowRunSetup">Run solution</button>
+                            <button class="@(mode == Mode.Import ? "active" : null)" @onclick="ShowImportSetup">Open report</button>
+                            <button class="drawer-close" @onclick="CloseSetup" aria-label="Close setup">×</button>
+                        </div>
+                    </header>
+
+                    @if (mode == Mode.Run)
+                    {
+                        <CoverageRunForm @bind-TargetPath="solutionPath" Settings="settings" IsBusy="isBusy"
+                            IsPickingSolution="isPickingSolution" OnChooseSolution="ChooseSolution" OnRunCoverage="RunCoverage" />
+                    }
+                    else
+                    {
+                        <CoverageImportForm @bind-ReportPath="reportPath" @bind-SourceRoot="sourceRoot"
+                            OnImportFile="ImportReportFile" OnOpenReport="OpenReport" />
+                    }
+
+                    @if (!string.IsNullOrWhiteSpace(statusMessage) && (mode == Mode.Run || lastRunOutcome is null))
+                    {
+                        @if (mode == Mode.Run && testSummary is { Failed: > 0 })
+                        {
+                            <CoverageTestResults Tests="testSummary" StatusMessage="@statusMessage" Output="@runOutput"
+                                CanOpenSource="CanOpenFailureSource" OnCopyFailure="CopyFailure" OnOpenFailureSource="OpenFailureSource" />
+                        }
+                        else
+                        {
+                            <div class="status @(statusIsError ? "error" : "success")">
+                                <span>@(statusIsError ? "!" : "✓")</span>
+                                <div>
+                                    <strong>@statusMessage</strong>
+                                    @if (!string.IsNullOrWhiteSpace(runOutput))
+                                    {
+                                        <details><summary>Full test output</summary><pre>@runOutput</pre></details>
+                                    }
+                                </div>
+                            </div>
+                        }
+                    }
+                </div>
+            </section>
+        </div>
+    }
+
+    @if (!isSetupOpen && !string.IsNullOrWhiteSpace(statusMessage))
+    {
+        <button class="topbar-notice @(statusIsError ? "error" : "success")" @onclick="OpenStatusDetails">
+            <span>@(statusIsError ? "!" : "✓")</span>
+            <strong>@statusMessage</strong>
+            <small>Details</small>
+        </button>
+    }
+
+    <main class="app-workspace">
+
+@if (isSolutionBrowserOpen)
+{
+    <SolutionBrowser CurrentSelection="@solutionPath" OnSelected="ApplySolutionSelection" OnClose="CloseSolutionBrowser" />
+}
+
+@if (collectionState.IsActive)
+{
+    <CollectionProgress Phase="collectionState.Phase"
+                        StartedAt="collectionState.StartedAt"
+                        TargetPath="@solutionPath" />
+}
+else if (report is not null)
+{
+    <section class="workspace-header">
+        <div>
+            <span class="eyebrow">COVERAGE WORKSPACE</span>
+            <div class="report-title-row" title="@RunDetailsTitle">
+                <h2>@report.Name</h2>
+                @if (currentRun is not null)
+                {
+                    <span class="run-status-badge @RunStatusClass">@CoverageRunLabelFormatter.StatusLabel(currentRun.Status)</span>
+                }
+            </div>
+            <p>@report.Packages.Count projects · @report.Files.Count files · generated @report.GeneratedAt.ToLocalTime().ToString("g")</p>
+        </div>
+        <div class="report-actions">
+            @if (workspaceMode == WorkspaceMode.Explorer)
+            {
+                <div class="rings">
+                    <MetricRing Metric="report.Lines" Label="lines" Color="#9600e7" />
+                    <MetricRing Metric="report.Branches" Label="branches" Color="#2f1cd8" />
+                    <MetricRing Metric="report.Methods" Label="methods" Color="#34d399" />
+                </div>
+            }
+        </div>
+    </section>
+
+    @if (lastRunOutcome == CoverageRunOutcome.TestsFailed && testSummary is not null)
+    {
+        <button class="failed-run-warning" @onclick="OpenStatusDetails">
+            <span>!</span>
+            <strong>Coverage collected from a run with @(FailureHeading(testSummary.Failed).ToLowerInvariant())</strong>
+            <small>@testSummary.Passed passed · View failures</small>
+        </button>
+    }
+
+    <CoverageExplorerWorkspace Report="report" IsVisible="@(workspaceMode == WorkspaceMode.Explorer)"
+        MetricSelection="metricSelection" FailureSelection="failureSelection" />
+
+    <CoverageMetricsWorkspace Report="report" IsVisible="@(workspaceMode == WorkspaceMode.Metrics)" OnOpenClass="OpenMetricClass" />
+}
+else
+{
+    <section class="workspace-empty-state">
+        <div class="empty-visual" aria-hidden="true">
+            <div class="empty-orbit orbit-one"></div>
+            <div class="empty-orbit orbit-two"></div>
+            <div class="empty-coverage-ring"><img src="coverscope-mark.svg" alt="" /></div>
+        </div>
+        <div class="empty-copy">
+            <span class="eyebrow">COVERAGE WORKSPACE</span>
+            <h1>No coverage loaded.</h1>
+            <p>Choose a solution or open a report from the toolbar to begin.</p>
+        </div>
+    </section>
+}
+
+    </main>
+</div>

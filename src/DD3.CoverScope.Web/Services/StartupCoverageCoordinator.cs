@@ -1,6 +1,7 @@
+using DD3.CoverScope;
 namespace DD3.CoverScope.Services;
 
-public sealed class StartupCoverageCoordinator(CoverScopeLaunchContext launchContext)
+public class StartupCoverageCoordinator(CoverScopeLaunchContext launchContext)
 {
     private int started;
 

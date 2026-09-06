@@ -20,13 +20,13 @@ public partial class CoverageTargetServiceTests
         service = new CoverageTargetService(fileSystemBroker, diagnosticsBroker);
     }
 
-    private class TestFileSystemBroker(List<string> events) : IFileSystemBroker
+    private class TestFileSystemBroker(List<string> events) : FileSystemBroker
     {
         public bool Exists { get; set; } = true;
         public Exception? Failure { get; set; }
         public List<string> RequestedPaths { get; } = [];
 
-        public bool FileExists(string path)
+        public override bool FileExists(string path)
         {
             events.Add("filesystem");
             RequestedPaths.Add(path);
@@ -35,13 +35,13 @@ public partial class CoverageTargetServiceTests
             return Exists;
         }
 
-        public bool DirectoryExists(string path) =>
+        public override bool DirectoryExists(string path) =>
             throw new InvalidOperationException("Target retrieval must not browse directories.");
 
-        public IReadOnlyList<string> EnumerateFiles(string directoryPath) =>
+        public override IReadOnlyList<string> EnumerateFiles(string directoryPath) =>
             throw new InvalidOperationException("Target retrieval must not enumerate files.");
 
-        public IReadOnlyList<string> EnumerateDirectories(string directoryPath) =>
+        public override IReadOnlyList<string> EnumerateDirectories(string directoryPath) =>
             throw new InvalidOperationException("Target retrieval must not enumerate directories.");
     }
 

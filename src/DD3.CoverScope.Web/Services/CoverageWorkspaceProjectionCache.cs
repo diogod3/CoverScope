@@ -1,3 +1,4 @@
+using CoverageReport = DD3.CoverScope.Models.CoverageReport;
 using DD3.CoverScope.Models;
 
 namespace DD3.CoverScope.Services;
@@ -17,7 +18,7 @@ public enum ExplorerCoverageFilter
     Untested
 }
 
-public sealed record ExplorerProjection(
+public record ExplorerProjection(
     IReadOnlyList<ExplorerProject> Projects,
     int FileCount,
     int ClassCount)
@@ -25,25 +26,25 @@ public sealed record ExplorerProjection(
     public static ExplorerProjection Empty { get; } = new([], 0, 0);
 }
 
-public sealed record ExplorerProject(
+public record ExplorerProject(
     PackageCoverage Project,
     IReadOnlyList<ExplorerNamespace> Namespaces);
 
-public sealed record ExplorerNamespace(
+public record ExplorerNamespace(
     NamespaceCoverage Namespace,
     IReadOnlyList<ExplorerFile> Files);
 
-public sealed record ExplorerFile(
+public record ExplorerFile(
     FileCoverage File,
     IReadOnlyList<ExplorerClass> Classes,
     CoverageMetric LineMetric);
 
-public sealed record ExplorerClass(
+public record ExplorerClass(
     ClassCoverage Class,
     IReadOnlyList<MethodCoverage> Methods,
     bool IsPartial);
 
-public sealed class CoverageWorkspaceProjectionCache(CoverageMetricsBuilder metrics)
+public class CoverageWorkspaceProjectionCache(CoverageMetricsBuilder metrics)
 {
     private CoverageReport? currentReport;
     private string? explorerFilter;

@@ -1,0 +1,73 @@
+                            <section class="test-results-panel" aria-labelledby="test-results-title">
+                                <header class="test-results-header">
+                                    <span class="failure-icon">!</span>
+                                    <div>
+                                        <h3 id="test-results-title">@FailureHeading(Tests.Failed)</h3>
+                                        <p>@StatusMessage</p>
+                                    </div>
+                                    <div class="test-summary-counts" aria-label="Test summary">
+                                        <span class="failed"><strong>@Tests.Failed</strong> failed</span>
+                                        <span class="passed"><strong>@Tests.Passed</strong> passed</span>
+                                        <span><strong>@Tests.Skipped</strong> skipped</span>
+                                        <span><strong>@Tests.Total</strong> total</span>
+                                        <span><strong>@FormatDuration(Tests.Duration)</strong></span>
+                                    </div>
+                                </header>
+
+                                <div class="failure-groups">
+                                    @if (Tests.Failures.Count == 0)
+                                    {
+                                        <div class="failure-list-unavailable">The test runner reported failures but did not include individual test details. Open the full test output below.</div>
+                                    }
+                                    @foreach (var assemblyGroup in Tests.Failures.GroupBy(x => AssemblyLabel(x.Assembly)))
+                                    {
+                                        <details class="failure-assembly" open="@(Tests.Failures.Count <= 5)">
+                                            <summary>
+                                                <span><b>◆</b>@assemblyGroup.Key</span>
+                                                <small>@FailureHeading(assemblyGroup.Count())</small>
+                                            </summary>
+                                            @foreach (var failure in assemblyGroup)
+                                            {
+                                                <details class="test-failure" open="@(Tests.Failures.Count == 1)">
+                                                    <summary>
+                                                        <span class="failed-test-name">@failure.Name<small>@failure.FullyQualifiedName</small></span>
+                                                        <span class="failed-test-meta">
+                                                            @if (!string.IsNullOrWhiteSpace(failure.SourceFile) && failure.SourceLine is not null)
+                                                            {
+                                                                <small>@(Path.GetFileName(failure.SourceFile)):@failure.SourceLine</small>
+                                                            }
+                                                            <small>@FormatDuration(failure.Duration)</small>
+                                                        </span>
+                                                    </summary>
+                                                    <div class="failure-details">
+                                                        @if (!string.IsNullOrWhiteSpace(failure.Message))
+                                                        {
+                                                            <pre class="exception-message">@failure.Message</pre>
+                                                        }
+                                                        <div class="failure-actions">
+                                                            <button @onclick="() => OnCopyFailure.InvokeAsync(failure)">Copy details</button>
+                                                            @if (CanOpenSource(failure))
+                                                            {
+                                                                <button class="open-source-action" @onclick="() => OnOpenFailureSource.InvokeAsync(failure)">Open source</button>
+                                                            }
+                                                        </div>
+                                                        @if (!string.IsNullOrWhiteSpace(failure.StackTrace))
+                                                        {
+                                                            <details class="stack-trace"><summary>Stack trace</summary><pre>@failure.StackTrace</pre></details>
+                                                        }
+                                                        @if (!string.IsNullOrWhiteSpace(failure.StandardOutput) || !string.IsNullOrWhiteSpace(failure.StandardError))
+                                                        {
+                                                            <details class="captured-output"><summary>Captured output</summary><pre>@failure.StandardOutput@failure.StandardError</pre></details>
+                                                        }
+                                                    </div>
+                                                </details>
+                                            }
+                                        </details>
+                                    }
+                                </div>
+
+                                @if (!string.IsNullOrWhiteSpace(Output))
+                                {
+                                    <details class="full-test-output"><summary>Full test output</summary><pre>@Output</pre></details>
+                                }
+                            </section>

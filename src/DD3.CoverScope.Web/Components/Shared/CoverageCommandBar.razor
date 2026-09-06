@@ -1,0 +1,34 @@
+@using DD3.CoverScope.Components.Shared
+@using DD3.CoverScope.Models
+    <header class="app-commandbar">
+        <a class="brand app-brand" href="/" aria-label="CoverScope home">
+            <img class="brand-mark" src="coverscope-mark.svg" alt="" />
+            <span>CoverScope</span>
+            <small>for .NET</small>
+        </a>
+
+        <button class="current-target" @onclick="OnShowRunSetup" disabled="@(IsBusy || IsPickingSolution)" title="@(string.IsNullOrWhiteSpace(TargetPath) ? "Choose a solution or project" : TargetPath)">
+            <span class="target-icon">◇</span>
+            <span>
+                <small>Current target</small>
+                <strong>@(string.IsNullOrWhiteSpace(TargetPath) ? "Choose solution or project" : Path.GetFileName(TargetPath))</strong>
+            </span>
+            <i>⌄</i>
+        </button>
+
+        <div class="workspace-switch @(Report is null ? "unavailable" : null)" role="tablist" aria-label="Coverage workspace" aria-hidden="@(Report is null)">
+            <button class="@(Mode == WorkspaceMode.Metrics ? "active" : null)" @onclick="OnShowMetrics" disabled="@(Report is null)"><span>▦</span> Metrics</button>
+            <button class="@(Mode == WorkspaceMode.Explorer ? "active" : null)" @onclick="OnShowExplorer" disabled="@(Report is null)"><span>⌘</span> Explorer</button>
+        </div>
+
+        <div class="command-actions">
+            <button class="command-button" @onclick="OnShowImportSetup"><span>＋</span> Open report</button>
+            <button class="primary run-command" @onclick="OnRunCoverage" disabled="@(IsBusy || IsPickingSolution || string.IsNullOrWhiteSpace(TargetPath))">
+                <span class="run-symbol">▶</span>@(IsBusy ? "Running…" : "Run coverage")
+                @if (!IsBusy && LastRunOutcome == CoverageRunOutcome.TestsFailed && Tests is not null)
+                {
+                    <span class="run-failure-badge">@Tests.Failed failed</span>
+                }
+            </button>
+        </div>
+    </header>

@@ -1,0 +1,9 @@
+                        <div class="import-actions">
+                            <label class="file-upload"><span>Choose Cobertura XML</span><InputFile OnChange="OnImportFile" accept=".xml,text/xml,application/xml" /></label>
+                            <span class="or-divider">or use a local path</span>
+                        </div>
+                        <div class="path-form report-form">
+                            <label><span>Cobertura XML report</span><input value="@ReportPath" @onchange="args => ReportPathChanged.InvokeAsync(args.Value?.ToString() ?? string.Empty)" placeholder="C:\Code\MyApp\TestResults\…\coverage.cobertura.xml" /></label>
+                            <label><span>Source root <small>(optional)</small></span><input value="@SourceRoot" @onchange="args => SourceRootChanged.InvokeAsync(args.Value?.ToString() ?? string.Empty)" placeholder="C:\Code\MyApp" /></label>
+                            <button class="primary" @onclick="OnOpenReport">Open report</button>
+                        </div>

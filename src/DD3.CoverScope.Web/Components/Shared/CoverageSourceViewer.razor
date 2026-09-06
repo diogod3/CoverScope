@@ -1,0 +1,47 @@
+        <article class="source-panel">
+            @if (File is null)
+            {
+                <div class="empty-state"><span>{ }</span><h3>Choose a file, class, or method</h3><p>Select an item in the hierarchy to inspect its annotated source.</p></div>
+            }
+            else
+            {
+                <header class="source-header">
+                    <div>
+                        <h3>@File.DisplayName</h3>
+                        <p>@File.RelativePath</p>
+                        @if (Class is not null)
+                        {
+                            <div class="source-selection">
+                                @Class.FullName
+                            @if (Method is not null)
+                            {
+                                <text> → @Method.Name</text>
+                            }
+                            </div>
+                        }
+                    </div>
+                    <div class="source-summary"><span><i class="dot covered"></i>@File.LineMetric.Covered covered</span><span><i class="dot uncovered"></i>@(File.LineMetric.Total - File.LineMetric.Covered) missed</span></div>
+                </header>
+                @if (Lines.Count == 0)
+                {
+                    <div class="empty-state compact"><h3>Source file not found</h3><p>Enter the repository directory as the source root and reopen the report.</p></div>
+                }
+                else
+                {
+                    <div class="code-table" role="table" aria-label="Annotated source code">
+                        @foreach (var line in Lines)
+                        {
+                            <div id="line-@line.Number" class="code-line @line.State @(TargetLine == line.Number ? "target" : null)" role="row">
+                                <span class="hit-count">@(line.Coverage is null ? "" : line.Coverage.Hits.ToString())</span>
+                                <span class="line-number">@line.Number</span>
+                                <code>@line.Text</code>
+                                @if (line.Coverage?.IsPartial == true)
+                                {
+                                    <span class="branch-badge">@line.Coverage.BranchesCovered/@line.Coverage.BranchesTotal branches</span>
+                                }
+                            </div>
+                        }
+                    </div>
+                }
+            }
+        </article>

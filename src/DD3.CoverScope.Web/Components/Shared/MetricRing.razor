@@ -4,10 +4,3 @@
         <span>@Label</span>
     </div>
 </div>
-
-@code {
-    [Parameter, EditorRequired] public CoverageMetric Metric { get; set; } = new(0, 0);
-    [Parameter, EditorRequired] public string Label { get; set; } = string.Empty;
-    [Parameter] public string Color { get; set; } = "#7c6cff";
-    private double BoundedPercent => Math.Clamp(Metric.Percent, 0, 100);
-}

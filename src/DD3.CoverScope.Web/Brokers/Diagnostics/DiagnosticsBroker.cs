@@ -6,6 +6,11 @@ public partial class DiagnosticsBroker : IDiagnosticsBroker
 {
     private static readonly ActivitySource Source = new("DD3.CoverScope");
 
+    public async ValueTask Trace(Func<ValueTask> operation, string activityName)
+    {
+        await Trace(async () => { await operation(); return true; }, activityName);
+    }
+
     public async ValueTask<TResult> Trace<TResult>(
         Func<ValueTask<TResult>> operation,
         string activityName)

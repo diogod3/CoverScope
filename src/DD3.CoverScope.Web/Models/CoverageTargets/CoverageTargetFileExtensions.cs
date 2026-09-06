@@ -1,3 +1,4 @@
+using DD3.CoverScope.Services.Foundations.CoverageTargets;
 namespace DD3.CoverScope.Models.CoverageTargets;
 
 // Shared format classification for target validation and browser filtering.

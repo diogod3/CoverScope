@@ -1,3 +1,4 @@
+using DD3.CoverScope.Services.Foundations.CoverageTargets;
 using DD3.CoverScope.Models.CoverageTargets;
 using Xunit;
 

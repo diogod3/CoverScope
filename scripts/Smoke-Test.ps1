@@ -230,8 +230,8 @@ public sealed class SmokeTests
                     $manifest = Get-Content -Raw -Path $manifestPath | ConvertFrom-Json
                     $coverageArtifacts = @($manifest.artifacts | Where-Object { $_.kind -eq "coverage" })
                     $testArtifacts = @($manifest.artifacts | Where-Object { $_.kind -eq "testResults" })
-                    if ($manifest.schemaVersion -eq 1 -and
-                        $manifest.status -eq "completed" -and
+                    if ($manifest.schemaVersion -eq 2 -and
+                        $manifest.status -eq "succeeded" -and
                         $coverageArtifacts.Count -gt 0 -and
                         $testArtifacts.Count -gt 0) {
                         $automaticRunCompleted = $true
@@ -315,7 +315,7 @@ public sealed class SmokeTests
                     if (Test-Path $path) {
                         Get-Content -Raw -Path $path | ConvertFrom-Json
                     }
-                } | Where-Object { $_.status -eq "completed" })
+                } | Where-Object { $_.status -eq "succeeded" })
                 if ($terminalManifests.Count -gt $initialRunCount) {
                     $secondRunCompleted = $true
                     break

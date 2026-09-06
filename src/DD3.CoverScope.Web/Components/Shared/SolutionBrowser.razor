@@ -1,0 +1,57 @@
+<div class="solution-browser-backdrop" @onclick="CloseSolutionBrowser">
+        <section class="solution-browser" role="dialog" aria-modal="true" aria-labelledby="solution-browser-title" @onclick:stopPropagation="true">
+            <header>
+                <div>
+                    <span class="eyebrow">LOCAL FILESYSTEM</span>
+                    <h2 id="solution-browser-title">Choose a solution or project</h2>
+                </div>
+                <button class="browser-close" @onclick="CloseSolutionBrowser" aria-label="Close">×</button>
+            </header>
+
+            <div class="browser-locations" aria-label="Quick locations">
+                @foreach (var location in browserLocations)
+                {
+                    <button @onclick="() => BrowseTo(location.Path)" title="@location.Path">@location.Label</button>
+                }
+            </div>
+
+            <div class="browser-path">
+                <button @onclick="BrowseUp" disabled="@(browserParent is null)" title="Parent folder">↑</button>
+                <input @bind="browserPathInput" aria-label="Folder path" />
+                <button @onclick="BrowseToTypedPath">Go</button>
+            </div>
+
+            @if (!string.IsNullOrWhiteSpace(browserError))
+            {
+                <div class="browser-error">@browserError</div>
+            }
+
+            <div class="browser-entries" role="listbox" aria-label="Folders, solutions, and projects">
+                @if (browserEntries.Count == 0)
+                {
+                    <div class="browser-empty">No subfolders or supported solution/project files here.</div>
+                }
+                else
+                {
+                    @foreach (var entry in browserEntries)
+                    {
+                        <button class="browser-entry @(entry.IsDirectory ? "directory" : "project")"
+                                @onclick="() => ActivateBrowserEntry(entry)"
+                                title="@entry.Path">
+                            <span class="browser-entry-icon">@(entry.IsDirectory ? "▸" : "◆")</span>
+                            <span>@entry.Name</span>
+                            @if (!entry.IsDirectory)
+                            {
+                                <small>@Path.GetExtension(entry.Name).TrimStart('.').ToUpperInvariant()</small>
+                            }
+                        </button>
+                    }
+                }
+            </div>
+
+            <footer>
+                <span>Select a folder to open it, or select a solution/project to use it.</span>
+                <button @onclick="CloseSolutionBrowser">Cancel</button>
+            </footer>
+        </section>
+    </div>

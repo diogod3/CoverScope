@@ -3,6 +3,9 @@ namespace DD3.CoverScope.Brokers.FileSystems;
 public partial interface IFileSystemBroker
 {
     bool DirectoryExists(string path);
-
-    IReadOnlyList<string> EnumerateDirectories(string directoryPath);
+    IReadOnlyList<string> EnumerateDirectories(string path);
+    void CreateDirectory(string path);
+    string GetUserDirectory();
+    string GetApplicationDataDirectory();
+    IReadOnlyList<string> GetReadyDrives();
 }

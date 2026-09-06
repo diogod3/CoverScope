@@ -1,0 +1,21 @@
+                        <div class="path-form">
+                            <div class="path-field">
+                                <span>Solution or test project</span>
+                                <div class="path-input-row">
+                                    <input value="@TargetPath" @onchange="args => TargetPathChanged.InvokeAsync(args.Value?.ToString() ?? string.Empty)" placeholder="C:\Code\MyApp\MyApp.sln" disabled="@(IsBusy || IsPickingSolution)" />
+                                    <button class="browse-button" @onclick="OnChooseSolution" disabled="@(IsBusy || IsPickingSolution)">@(IsPickingSolution ? "Opening…" : "Browse…")</button>
+                                </div>
+                            </div>
+                            <button class="primary" @onclick="OnRunCoverage" disabled="@(IsBusy || IsPickingSolution || string.IsNullOrWhiteSpace(TargetPath))">@(IsBusy ? "Running tests…" : "Run coverage")</button>
+                        </div>
+                        <p class="form-hint">Uses <code>dotnet test --collect:"XPlat Code Coverage"</code>. Test projects need <code>coverlet.collector</code>.</p>
+
+                        <details class="exclusion-panel">
+                            <summary><span>Collection exclusions</span><small>Saved automatically when coverage runs</small></summary>
+                            <div class="exclusion-grid">
+                                <label><span>Assemblies / types</span><input @bind="Settings.Exclude" placeholder="[*Tests]*,[MyApp.Generated]*" /><small>Coverlet filter expressions separated by commas.</small></label>
+                                <label><span>Source files</span><input @bind="Settings.ExcludeByFile" placeholder="**/Migrations/*.cs,**/*.g.cs" /><small>Glob patterns separated by commas.</small></label>
+                                <label><span>Attributes</span><input @bind="Settings.ExcludeByAttribute" placeholder="GeneratedCodeAttribute,CompilerGeneratedAttribute" /><small>Attribute names separated by commas.</small></label>
+                                <label class="check-option"><input type="checkbox" @bind="Settings.SkipAutoProps" /><span>Skip auto-implemented properties</span></label>
+                            </div>
+                        </details>

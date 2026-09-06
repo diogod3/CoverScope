@@ -1,0 +1,136 @@
+@using DD3.CoverScope.Services.Views
+<section class="metrics-view" hidden="@(!IsVisible)">
+    <div class="metrics-summary-grid">
+        <article class="metric-summary-card line-card">
+            <span>Line coverage</span>
+            <strong>@Report.Lines.Display</strong>
+            <small>@Ratio(Report.Lines) lines covered</small>
+        </article>
+        <article class="metric-summary-card missed-card">
+            <span>Missed lines</span>
+            <strong>@Format(Report.Lines.Total - Report.Lines.Covered)</strong>
+            <small>of @Format(Report.Lines.Total) instrumented lines</small>
+        </article>
+        <article class="metric-summary-card branch-card">
+            <span>Branch coverage</span>
+            <strong>@Report.Branches.Display</strong>
+            <small>@Ratio(Report.Branches) branches covered</small>
+        </article>
+        <article class="metric-summary-card method-card">
+            <span>Method coverage</span>
+            <strong>@Report.Methods.Display</strong>
+            <small>@Ratio(Report.Methods) methods reached</small>
+        </article>
+    </div>
+
+    <div class="metrics-panel">
+        <header class="metrics-panel-header">
+            <div>
+                <nav class="metric-breadcrumbs" aria-label="Metric level">
+                    <button @onclick="ShowProjects">All projects</button>
+                    @if (selectedProject is not null)
+                    {
+                        <span>›</span>
+                        <button @onclick="ShowNamespaces">@selectedProject.Name</button>
+                    }
+                    @if (selectedNamespace is not null)
+                    {
+                        <span>›</span>
+                        <strong>@selectedNamespace.Name</strong>
+                    }
+                </nav>
+                <h3>@LevelTitle</h3>
+                <p>@LevelDescription</p>
+            </div>
+            <span class="result-count">@VisibleRows.Count results</span>
+        </header>
+
+        <div class="metrics-controls">
+            <label class="metrics-search">
+                <span>Search</span>
+                <input @bind="Search" @bind:event="oninput" placeholder="Find @LevelName.ToLowerInvariant()…" />
+            </label>
+            <label>
+                <span>Sort</span>
+                <select @bind="SortMode">
+                    <option value="@MetricSort.MostMissed">Most missed lines</option>
+                    <option value="@MetricSort.LowestCoverage">Lowest coverage</option>
+                    <option value="@MetricSort.Largest">Largest total</option>
+                    <option value="@MetricSort.HighestCoverage">Highest coverage</option>
+                    <option value="@MetricSort.Name">Name</option>
+                </select>
+            </label>
+            <label>
+                <span>Coverage</span>
+                <select @bind="CoverageThreshold">
+                    <option value="101">Any coverage</option>
+                    <option value="100">Below 100%</option>
+                    <option value="90">Below 90%</option>
+                    <option value="80">Below 80%</option>
+                    <option value="60">Below 60%</option>
+                </select>
+            </label>
+            <label class="minimum-lines">
+                <span>Minimum lines</span>
+                <input type="number" min="0" step="10" @bind="MinimumLines" />
+            </label>
+            <label class="metrics-check">
+                <input type="checkbox" @bind="OnlyWithGaps" />
+                <span>Only with gaps</span>
+            </label>
+        </div>
+
+        @if (VisibleRows.Count == 0)
+        {
+            <div class="metrics-empty"><strong>No matching coverage metrics</strong><span>Try clearing the search or widening the filters.</span></div>
+        }
+        else
+        {
+            <div class="metrics-table-wrap">
+                <table class="metrics-table">
+                    <thead>
+                        <tr>
+                            <th>Name</th>
+                            <th>Coverage</th>
+                            <th class="number-column">Covered</th>
+                            <th class="number-column">Missed</th>
+                            <th class="number-column">Total</th>
+                            <th>Branches</th>
+                            <th>Methods</th>
+                            <th class="number-column">Files</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var row in VisibleRows)
+                        {
+                            <tr tabindex="0" @onclick="() => OpenRow(row)" @onkeydown="(KeyboardEventArgs args) => HandleRowKey(args, row)">
+                                <td class="metric-name-cell">
+                                    <span class="metric-scope-icon @row.Scope.ToString().ToLowerInvariant()">@ScopeIcon(row.Scope)</span>
+                                    <span>
+                                        <strong>@row.Name</strong>
+                                        <small>@RowSubtitle(row)</small>
+                                    </span>
+                                    <i class="row-arrow">→</i>
+                                </td>
+                                <td>
+                                    <div class="table-coverage">
+                                        <strong>@row.Lines.Display</strong>
+                                        <div class="coverage-bar" style="@BarStyle(row.Lines)" role="progressbar" aria-label="@row.Name line coverage" aria-valuemin="0" aria-valuemax="100" aria-valuenow="@Math.Round(row.Lines.Percent)">
+                                            <i></i>
+                                        </div>
+                                    </div>
+                                </td>
+                                <td class="number-column covered-number">@Format(row.Lines.Covered)</td>
+                                <td class="number-column missed-number">@Format(row.Lines.Total - row.Lines.Covered)</td>
+                                <td class="number-column">@Format(row.Lines.Total)</td>
+                                <td>@CompactMetric(row.Branches)</td>
+                                <td>@CompactMetric(row.Methods)</td>
+                                <td class="number-column">@Format(row.FileCount)</td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+        }
+    </div>
+</section>

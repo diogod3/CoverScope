@@ -11,7 +11,7 @@ public enum CoverageCollectionPhase
     BuildingMetrics
 }
 
-public sealed class CoverageCollectionState
+public class CoverageCollectionState
 {
     public bool IsActive { get; private set; }
     public CoverageCollectionPhase Phase { get; private set; } = CoverageCollectionPhase.PreparingCollection;

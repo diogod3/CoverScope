@@ -1,5 +1,4 @@
-@implements IAsyncDisposable
-
+@using DD3.CoverScope.Services
 <section class="collection-progress" aria-labelledby="collection-progress-title">
     <div class="collection-progress-visual" aria-hidden="true">
         <div class="collection-progress-halo"></div>
@@ -30,55 +29,3 @@
         </p>
     </div>
 </section>
-
-@code {
-    [Parameter, EditorRequired]
-    public CoverageCollectionPhase Phase { get; set; }
-
-    [Parameter, EditorRequired]
-    public DateTimeOffset StartedAt { get; set; }
-
-    [Parameter, EditorRequired]
-    public string TargetPath { get; set; } = string.Empty;
-
-    private readonly CancellationTokenSource timerCancellation = new();
-    private Task? timerTask;
-
-    private string ElapsedLabel
-    {
-        get
-        {
-            var elapsed = DateTimeOffset.UtcNow - StartedAt;
-            return elapsed.TotalMinutes >= 1
-                ? $"{(int)elapsed.TotalMinutes}m {elapsed.Seconds:00}s"
-                : $"{Math.Max(0, (int)elapsed.TotalSeconds)}s";
-        }
-    }
-
-    protected override void OnAfterRender(bool firstRender)
-    {
-        if (firstRender)
-            timerTask = UpdateElapsedAsync(timerCancellation.Token);
-    }
-
-    private async Task UpdateElapsedAsync(CancellationToken cancellationToken)
-    {
-        using var timer = new PeriodicTimer(TimeSpan.FromSeconds(1));
-        try
-        {
-            while (await timer.WaitForNextTickAsync(cancellationToken))
-                await InvokeAsync(StateHasChanged);
-        }
-        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
-        {
-        }
-    }
-
-    public async ValueTask DisposeAsync()
-    {
-        await timerCancellation.CancelAsync();
-        if (timerTask is not null)
-            await timerTask;
-        timerCancellation.Dispose();
-    }
-}

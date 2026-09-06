@@ -1,11 +1,1 @@
 <span class="coverage-pill @Band">@Metric.Display</span>
-
-@code {
-    [Parameter, EditorRequired] public CoverageMetric Metric { get; set; } = new(0, 0);
-    private string Band => Metric.Total == 0 ? "empty" : Metric.Percent switch
-    {
-        >= 80 => "good",
-        >= 60 => "medium",
-        _ => "poor"
-    };
-}

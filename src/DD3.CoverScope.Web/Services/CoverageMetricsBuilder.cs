@@ -1,8 +1,9 @@
+using CoverageReport = DD3.CoverScope.Models.CoverageReport;
 using DD3.CoverScope.Models;
 
 namespace DD3.CoverScope.Services;
 
-public sealed class CoverageMetricsBuilder
+public class CoverageMetricsBuilder
 {
     public IReadOnlyList<CoverageMetricRow> BuildProjects(CoverageReport report) => report.Packages
         .Select(project =>
@@ -99,9 +100,9 @@ public sealed class CoverageMetricsBuilder
             fragments.Select(x => x.RelativePath).Distinct(StringComparer.OrdinalIgnoreCase).Count());
     }
 
-    private sealed record FileLine(string Path, CoverageLine Line);
-    private sealed record FileMethod(string Path, string ClassName, MethodCoverage Method);
-    private sealed record AggregateMetrics(
+    private record FileLine(string Path, CoverageLine Line);
+    private record FileMethod(string Path, string ClassName, MethodCoverage Method);
+    private record AggregateMetrics(
         CoverageMetric Lines,
         CoverageMetric Branches,
         CoverageMetric Methods,

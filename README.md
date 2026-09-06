@@ -161,7 +161,11 @@ should not track generated reports should add:
 .coverscope/reports/
 ```
 
-Existing `coverage-output/` directories are left untouched.
+Run directories use UUIDv7 identifiers. Schema version 2 records the effective target
+and collection settings, UTC `startedAt`/`completedAt` timestamps, and the run
+status. Earlier manifests are not migrated or loaded. Their directories, including
+existing `coverage-output/` directories, are left untouched; their Cobertura XML
+files can still be opened as standalone reports.
 
 If tests fail, CoverScope presents the failed tests separately from infrastructure or collection errors. When a usable coverage report was still produced, it remains available with a visible failed-run warning.
 
