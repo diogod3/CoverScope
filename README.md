@@ -83,7 +83,7 @@ Found something confusing or incorrect? Open a repository issue with your versio
 
 ## Development disclosure
 
-CoverScope was developed with the assistance of OpenAI's GPT-5.6 Sol through Codex. Project direction, requirements, review, testing, and release decisions remain human-led.
+CoverScope was developed with the assistance of OpenAI's GPT-6 Astra through Codex. Project direction, requirements, review, testing, and release decisions remain human-led.
 
 ## License
 
