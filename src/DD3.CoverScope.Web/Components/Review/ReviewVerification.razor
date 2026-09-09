@@ -1,0 +1,28 @@
+@using DD3.CoverScope.Models.Reviews
+<div class="local-tabs">@foreach (var tab in new[] { "Tests", "Coverage", "Formatting" }) { <button @onclick="() => selected = tab" aria-pressed="@(selected == tab)">@tab</button> }</div>
+@if (selected == "Tests")
+{
+    <section class="work-panel build-panel"><header class="panel-header"><h2>Build · @Evidence.Build.Status</h2><p>@Evidence.Build.Message</p></header><div class="panel-scroll panel-padding"><details><summary>Build output and commands</summary><pre>@string.Join("\n", Evidence.Build.Commands)
+@Evidence.Build.Output</pre></details></div></section>
+    <section class="work-panel"><header class="panel-header"><h2>Tests · @Evidence.Tests.Status</h2><p>@Evidence.Tests.Message</p>
+        @foreach (var group in Evidence.Executions.GroupBy(x => x.Outcome)) { <span class="badge">@group.Key: @group.Count()</span> }
+    </header><div class="panel-scroll panel-padding">
+        @foreach (var test in Evidence.Executions.OrderBy(x => x.Outcome == "Passed"))
+        { <details class="execution"><summary class="ellipsis" title="@test.Name">@test.Outcome · @test.Name</summary><p class="muted">@test.Assembly · @test.DurationSeconds.ToString("0.###")s</p><pre>@test.Message
+@test.StackTrace
+@test.Output</pre></details> }
+        <details><summary>Test output and commands</summary><pre>@string.Join("\n", Evidence.Tests.Commands)
+@Evidence.Tests.Output</pre></details>
+    </div></section>
+}
+else if (selected == "Coverage")
+{ <ReviewCoverage Evidence="Evidence" OnType="OnType" /> }
+else
+{ <ReviewFormatting Evidence="Evidence" OnFile="OnFile" /> }
+
+@code {
+    [Parameter, EditorRequired] public ReviewEvidence Evidence { get; set; } = default!;
+    [Parameter] public EventCallback<string> OnFile { get; set; }
+    [Parameter] public EventCallback<TypeEvidence> OnType { get; set; }
+    private string selected = "Tests";
+}

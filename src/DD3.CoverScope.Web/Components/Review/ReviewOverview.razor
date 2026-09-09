@@ -1,0 +1,57 @@
+@using DD3.CoverScope.Models.Reviews
+<div class="metric-grid">
+    <button class="metric" @onclick="OnChanges"><span>Changed files</span><strong>@Evidence.Files.Count</strong><small>Repository comparison</small></button>
+    <button class="metric" @onclick="OnChanges"><span>Lines changed</span><strong>+@Evidence.Files.Sum(x => x.Added ?? 0) / −@Evidence.Files.Sum(x => x.Removed ?? 0)</strong><small>Text additions / removals</small></button>
+    <button class="metric" @onclick="OnChanges"><span>Changed types</span><strong>@Count(Evidence.Code.Types.Count(x => x.Change != "Unchanged"))</strong><small>Selected C# target</small></button>
+    <button class="metric" @onclick="OnChanges"><span>Changed members</span><strong>@Count(Evidence.Code.Types.SelectMany(x => x.Members).Count(x => x.Change != "Unchanged"))</strong><small>Excludes comment/spacing-only edits</small></button>
+    <button class="metric" @onclick="OnChanges"><span>Changed tests</span><strong>@Count(Evidence.Code.Types.SelectMany(x => x.Members).Count(x => x.IsTest && x.Change != "Unchanged"))</strong><small>xUnit definitions, not executions</small></button>
+</div>
+<section class="surface overview-verification"><div class="title-row"><h2>Verification</h2><button class="text-button" @onclick="OnVerification">Open evidence →</button></div>
+    <div class="three-columns"><div><h3>Build · @Evidence.Build.Status</h3><p>@Evidence.Build.Message</p><h3>Tests · @Evidence.Tests.Status</h3>@if (Evidence.Executions.Count > 0) { <p>@Evidence.Executions.Count(x => x.Outcome == "Passed") passed · @Evidence.Executions.Count(x => x.Outcome == "Failed") failed · @Evidence.Executions.Count recorded executions</p> } else { <p class="muted">@(Evidence.Tests.Status == CheckStatus.NotRun ? "Not run" : "Results unavailable")</p> }</div>
+    <div><h3>Coverage</h3><p>@CoverageLabel</p><p class="muted">Collector total includes all reported source scopes. Open coverage for the breakdown.</p><p class="muted">@Evidence.Coverage.Limitation</p>@if (Evidence.Coverage.Available && Evidence.SourceMatches) { <p>Changed executable lines: @ChangedCoverage</p> }</div>
+    <div><h3>Formatting · @Evidence.Formatting.Status</h3>@if (Evidence.Formatting.Status == CheckStatus.Completed || Evidence.FormattingFindings.Count > 0) { <p>@Evidence.FormattingFindings.Count recorded findings</p> } else { <p class="muted">@(Evidence.Formatting.Status == CheckStatus.NotRun ? "Not run" : "Findings unavailable")</p> }<p class="muted">@Evidence.Formatting.Message</p></div></div>
+</section>
+<div class="overview-details">
+@if (Evidence.Code.Types.Any(x => x.Change != "Unchanged"))
+{ <ReviewRelationships Evidence="Evidence" OnType="OnType" /> }
+<section class="work-panel overview-types"><header class="panel-header"><h2>Changed types</h2></header><div class="panel-scroll panel-padding">
+    @if (!Evidence.Code.Complete) { <p class="notice">Code comparison is partial or unavailable. Counts are not reported as zero.</p> }
+    @foreach (var type in Evidence.Code.Types.Where(x => x.Change != "Unchanged"))
+    { <div class="list-row"><div><button class="text-button" title="@type.FullName" @onclick="() => OnType.InvokeAsync(type)">@type.FullName</button><p class="muted">@type.Project · @type.Files.Count source files</p></div><span>@type.Change →</span></div> }
+    @if (Evidence.Code.Complete && Evidence.Code.Types.All(x => x.Change == "Unchanged")) { <p class="muted">No changed C# type declarations in this target.</p> }
+    @foreach (var limitation in Evidence.Code.Limitations) { <p class="muted">@limitation</p> }
+    @if (Evidence.Code.Diagnostics.Count > 0)
+    {
+        <details class="index-diagnostics"><summary>Index diagnostics · @Evidence.Code.Diagnostics.Count recorded</summary>
+            <p class="muted">Package-audit messages remain visible without making the source index incomplete. Original tool classifications are preserved.</p>
+            @foreach (var diagnostic in Evidence.Code.Diagnostics)
+            { <p class="muted">@diagnostic.Revision · @diagnostic.Category · reported as @diagnostic.Kind · @(diagnostic.AffectsCompleteness ? "Affects completeness" : "Does not affect completeness")<br />@diagnostic.Message</p> }
+        </details>
+    }
+</div></section>
+</div>
+
+@code {
+    [Parameter, EditorRequired] public ReviewEvidence Evidence { get; set; } = default!;
+    [Parameter] public EventCallback OnChanges { get; set; }
+    [Parameter] public EventCallback OnVerification { get; set; }
+    [Parameter] public EventCallback<TypeEvidence> OnType { get; set; }
+    private string Count(int count) => Evidence.Code.Complete ? count.ToString() : "Unavailable";
+    private string CoverageLabel => !Evidence.Coverage.Available ? "Unavailable" : Metric(Evidence.Coverage.Files.Sum(x => x.CoveredLines.Count), Evidence.Coverage.Files.Sum(x => x.ExecutableLines.Count)) + " executable lines";
+    private string ChangedCoverage
+    {
+        get
+        {
+            var all = 0; var covered = 0;
+            foreach (var file in Evidence.Files.Where(x => x.Kind != ChangeKind.Deleted))
+            {
+                var coverage = Evidence.Coverage.Files.SingleOrDefault(x => x.Path == file.Path);
+                if (coverage is null) { continue; }
+                all += file.AddedLines.Intersect(coverage.ExecutableLines).Count();
+                covered += file.AddedLines.Intersect(coverage.CoveredLines).Count();
+            }
+            return Metric(covered, all);
+        }
+    }
+    private static string Metric(int covered, int total) => total == 0 ? "Not applicable" : $"{covered}/{total} ({100d * covered / total:0.0}%)";
+}

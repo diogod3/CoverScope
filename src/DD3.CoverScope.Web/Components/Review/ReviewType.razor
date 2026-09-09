@@ -1,0 +1,56 @@
+@using DD3.CoverScope.Models.Reviews
+<div class="type-workspace">
+    <header class="selection-strip"><div class="shrink"><h2 class="ellipsis" title="@Type.FullName">@Type.FullName</h2><p class="muted ellipsis" title="@Type.Project">@Type.Kind · @Type.Project · @Type.Change</p></div>
+        <div class="source-file-buttons">@foreach (var file in Type.Files) { <button class="ellipsis" title="@file" @onclick="() => OnFile.InvokeAsync(file)">@System.IO.Path.GetFileName(file)</button> }</div>
+    </header>
+    <div class="type-layout">
+        <section class="work-panel"><header class="panel-header"><h2>Members</h2><p class="muted">All parts of this logical type</p></header><div class="panel-scroll">
+            @foreach (var item in Type.Members)
+            { <button class="tree-item @(member?.Id == item.Id ? "selected" : null)" title="@(item.Name + " · " + item.Path)" @onclick="() => member = item"><span class="node-icon">M</span><span class="node-label"><span class="ellipsis">@item.Name</span><small>@item.Kind · @item.Change</small></span></button> }
+            @if (Type.Members.Count == 0) { <p class="muted panel-padding">No explicit members recorded.</p> }
+        </div></section>
+        <ReviewSource Evidence="Evidence" Path="@(member?.Path ?? Type.Files.FirstOrDefault())" InitialLine="member?.Line" InitialRevision="@(member?.Change == "Deleted" || Type.Change == "Deleted" ? "Baseline" : "Head")" />
+        <aside class="type-related">
+            <div class="local-tabs">@foreach (var tab in new[] { "Graph", "Tests", "Formatting" }) { <button aria-pressed="@(relatedTab == tab)" @onclick="() => relatedTab = tab">@tab</button> }</div>
+            @if (relatedTab == "Graph") { <ReviewRelationships Evidence="Evidence" Type="Type" OnType="OnType" /> }
+            else if (relatedTab == "Tests")
+            { <section class="work-panel"><header class="panel-header"><h2>Related test results</h2><p class="muted">Statically related test types; not per-test coverage attribution.</p></header><div class="panel-scroll panel-padding">
+                @foreach (var execution in RelatedTests) { <details class="execution"><summary title="@execution.Name">@execution.Outcome · @execution.Name</summary><pre>@execution.Message
+@execution.StackTrace</pre></details> }
+                @if (!RelatedTests.Any()) { <p class="muted">No related test executions resolved.</p> }
+            </div><footer class="panel-footer"><button @onclick="OnVerification">Open verification</button></footer></section> }
+            else
+            { <section class="work-panel"><header class="panel-header"><h2>Formatting</h2><p class="muted">@Evidence.Formatting.Status</p></header><div class="panel-scroll panel-padding">
+                @foreach (var finding in Evidence.FormattingFindings.Where(x => Type.Files.Contains(x.Path))) { <p><strong>@finding.Id</strong> · @finding.Path:@finding.Line<br />@finding.Message</p> }
+            </div></section> }
+        </aside>
+    </div>
+</div>
+@code {
+    [Parameter, EditorRequired] public ReviewEvidence Evidence { get; set; } = default!;
+    [Parameter, EditorRequired] public TypeEvidence Type { get; set; } = default!;
+    [Parameter] public EventCallback<TypeEvidence> OnType { get; set; }
+    [Parameter] public EventCallback OnVerification { get; set; }
+    [Parameter] public EventCallback<string> OnFile { get; set; }
+    private IEnumerable<TestExecution> RelatedTests
+    {
+        get
+        {
+            var relatedIds = Related.SelectMany(x => new[] { x.From, x.To }).Append(Type.Id).ToHashSet(StringComparer.Ordinal);
+            var names = Evidence.Code.Types.Where(x => relatedIds.Contains(x.Id) && x.Members.Any(m => m.IsTest))
+                .Select(x => x.FullName).Where(name => Evidence.Code.Types.Count(t => t.FullName == name) == 1).ToHashSet(StringComparer.Ordinal);
+            return Evidence.Executions.Where(x => names.Contains(x.ClassName.Split(',')[0]));
+        }
+    }
+    [Parameter] public string? InitialMemberId { get; set; }
+    private string? previousMember;
+    private MemberEvidence? member;
+    private string? previousType;
+    private string relatedTab = "Graph";
+    private IEnumerable<CodeRelationship> Related => Evidence.Code.Relationships.Where(x => x.From == Type.Id || x.To == Type.Id).DistinctBy(x => (x.From, x.To, x.Kind, x.Revision));
+    protected override void OnParametersSet()
+    {
+        if (previousType != Type.Id || previousMember != InitialMemberId)
+        { member = Type.Members.FirstOrDefault(x => x.Id == InitialMemberId) ?? Type.Members.FirstOrDefault(x => x.Change != "Unchanged") ?? Type.Members.FirstOrDefault(); previousType = Type.Id; previousMember = InitialMemberId; }
+    }
+}

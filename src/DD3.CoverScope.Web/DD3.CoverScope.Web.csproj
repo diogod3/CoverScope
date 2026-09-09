@@ -9,10 +9,10 @@
     <PackAsTool>true</PackAsTool>
     <ToolCommandName>coverscope</ToolCommandName>
     <PackageId>DD3.CoverScope.Tool</PackageId>
-    <Version>0.1.0-beta.3</Version>
+    <Version>0.2.0-beta.1</Version>
     <Authors>Diogo Duarte</Authors>
-    <Description>A cross-platform, local-first .NET code coverage explorer.</Description>
-    <PackageTags>dotnet-tool;code-coverage;coverlet;cobertura;blazor</PackageTags>
+    <Description>A local .NET workspace for reviewing committed changes, tests, coverage, and formatting.</Description>
+    <PackageTags>dotnet-tool;code-review;code-coverage;git;blazor</PackageTags>
     <PackageProjectUrl>https://github.com/diogod3/CoverScope</PackageProjectUrl>
     <RepositoryUrl>https://github.com/diogod3/CoverScope</RepositoryUrl>
     <RepositoryType>git</RepositoryType>
@@ -26,5 +26,12 @@
     <None Include="../../README.md" Pack="true" PackagePath="/" />
     <None Include="../../LICENSE" Pack="true" PackagePath="/" />
     <Content Update="wwwroot/**/*" Pack="true" PackagePath="tools/$(TargetFramework)/any/wwwroot/%(RecursiveDir)%(Filename)%(Extension)" />
+  </ItemGroup>
+  <ItemGroup>
+    <PackageReference Include="Microsoft.CodeAnalysis.CSharp.Workspaces" Version="5.9.0" />
+    <PackageReference Include="Microsoft.CodeAnalysis.Workspaces.MSBuild" Version="5.9.0" />
+    <PackageReference Include="Microsoft.Build.Locator" Version="1.11.2" />
+    <!-- Locator loads MSBuild from the installed SDK, not the application output. -->
+    <PackageReference Include="Microsoft.Build.Framework" Version="17.11.48" ExcludeAssets="runtime" PrivateAssets="all" />
   </ItemGroup>
 </Project>

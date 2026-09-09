@@ -1,0 +1,113 @@
+@inject SolutionFileBrowser Browser
+@inject IJSRuntime JS
+
+<dialog class="solution-browser" @ref="dialog" aria-labelledby="solution-browser-title">
+    <header>
+        <div><span class="eyebrow">Local workspace</span><h2 id="solution-browser-title">Choose a solution or project</h2></div>
+        <button class="browser-close" @onclick="CloseAsync" aria-label="Close picker" autofocus>×</button>
+    </header>
+    <div class="browser-locations" aria-label="Quick locations">
+        @foreach (var location in locations)
+        {
+            <button @onclick="() => BrowseAsync(location.Path)" disabled="@busy" title="@location.Path">@location.Label</button>
+        }
+    </div>
+    <form class="browser-path" @onsubmit="BrowseTypedPathAsync" @onsubmit:preventDefault="true">
+        <button type="button" @onclick="BrowseUpAsync" disabled="@(busy || parentPath is null)" aria-label="Parent folder">↑</button>
+        <input @bind="pathInput" @bind:event="oninput" aria-label="Folder path" disabled="@busy" />
+        <button type="submit" disabled="@busy">Go</button>
+    </form>
+    <div role="status" aria-live="polite">
+        @if (!string.IsNullOrWhiteSpace(error)) { <p class="browser-error">@error</p> }
+    </div>
+    <div class="browser-entries" aria-label="Folders, solutions, and projects" aria-busy="@busy">
+        @if (busy) { <div class="browser-empty"><div class="loading-status" role="status"><span class="loading-spinner" aria-hidden="true"></span><span>@loadingMessage</span></div></div> }
+        else if (entries.Count == 0) { <p class="browser-empty">No subfolders or supported solution/project files here.</p> }
+        else
+        {
+            @foreach (var entry in entries)
+            {
+                <button @key="entry.Path" class="browser-entry @(entry.IsDirectory ? "directory" : "project")"
+                        @onclick="() => SelectAsync(entry)" title="@entry.Path">
+                    <span class="browser-entry-icon" aria-hidden="true">@(entry.IsDirectory ? "▸" : "◆")</span>
+                    <span>@entry.Name</span><small>@(entry.IsDirectory ? "Folder" : System.IO.Path.GetExtension(entry.Name).TrimStart('.'))</small>
+                </button>
+            }
+        }
+    </div>
+    <footer><span>Browse locally. Selecting a target does not start a run.</span><button @onclick="CloseAsync">Cancel</button></footer>
+</dialog>
+
+@code {
+    [Parameter] public EventCallback<string> OnSelected { get; set; }
+    private ElementReference dialog;
+    private bool busy;
+    private string loadingMessage = "Opening folder…";
+    private string pathInput = "";
+    private string? parentPath, error;
+    private IReadOnlyList<SolutionBrowserLocation> locations = [];
+    private IReadOnlyList<SolutionBrowserEntry> entries = [];
+
+    public async Task OpenAsync(string selection)
+    {
+        if (busy) { return; }
+        busy = true;
+        loadingMessage = "Opening folder…";
+        error = null;
+        entries = [];
+        await InvokeAsync(StateHasChanged);
+        try
+        {
+            await JS.InvokeVoidAsync("CoverScope.openDialog", dialog);
+            locations = await Task.Run(Browser.GetLocations);
+            Apply(await Task.Run(() => Browser.Open(selection)));
+        }
+        catch (JSException) { throw; }
+        catch (Exception ex) { error = "The solution browser could not be opened: " + ex.Message; }
+        finally { busy = false; await InvokeAsync(StateHasChanged); }
+    }
+
+    private async Task BrowseAsync(string path)
+    {
+        if (busy) { return; }
+        busy = true; error = null; loadingMessage = "Opening folder…";
+        try
+        {
+            StateHasChanged();
+            await Task.Yield();
+            Apply(await Task.Run(() => Browser.Browse(path)));
+        }
+        catch (Exception ex) { error = "The folder could not be opened: " + ex.Message; }
+        finally { busy = false; }
+    }
+
+    private Task BrowseTypedPathAsync() => BrowseAsync(pathInput);
+    private Task BrowseUpAsync() => parentPath is null ? Task.CompletedTask : BrowseAsync(parentPath);
+    private async Task SelectAsync(SolutionBrowserEntry entry)
+    {
+        if (busy) { return; }
+        if (entry.IsDirectory) { await BrowseAsync(entry.Path); return; }
+        busy = true; error = null; loadingMessage = "Checking selected target…";
+        try
+        {
+            StateHasChanged();
+            await Task.Yield();
+            var result = await Task.Run(() => Browser.ValidateSelection(entry.Path));
+            if (!result.Success || result.SelectedPath is null) { error = result.Message; return; }
+            await CloseAsync();
+            await OnSelected.InvokeAsync(result.SelectedPath);
+        }
+        catch (Exception ex) { error = "The target could not be selected: " + ex.Message; }
+        finally { busy = false; }
+    }
+
+    private void Apply(SolutionBrowserSnapshot snapshot)
+    {
+        pathInput = snapshot.DirectoryPath;
+        parentPath = snapshot.ParentPath;
+        entries = snapshot.Entries;
+        error = snapshot.ErrorMessage;
+    }
+
+    private async Task CloseAsync() => await JS.InvokeVoidAsync("CoverScope.closeDialog", dialog);
+}

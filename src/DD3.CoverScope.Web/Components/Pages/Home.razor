@@ -1,967 +1,246 @@
 @page "/"
 @rendermode InteractiveServer
-@inject CoberturaParser Parser
-@inject CoverageRunner Runner
-@inject CoverageRunStore RunStore
-@inject CoverageSettingsStore SettingsStore
-@inject SolutionFileBrowser SolutionBrowser
-@inject CoverageWorkspaceProjectionCache Projections
-@inject StartupCoverageCoordinator StartupCoverage
-@inject CoverScopeLaunchContext LaunchContext
+@implements IDisposable
+@using DD3.CoverScope.Components.Review
+@using DD3.CoverScope.Models.Reviews
+@using DD3.CoverScope.Services.Reviews
+@inject GitComparisonService Git
+@inject ReviewStore Store
+@inject ReviewOrchestrationService Runs
+@inject ReviewExportService Exports
+@inject CoverScopeLaunchContext Launch
 @inject IJSRuntime JS
 
-<PageTitle>CoverScope · .NET coverage explorer and metrics</PageTitle>
-
-<div class="coverage-app">
-    <header class="app-commandbar">
-        <a class="brand app-brand" href="/" aria-label="CoverScope home">
-            <img class="brand-mark" src="coverscope-mark.svg" alt="" />
-            <span>CoverScope</span>
-            <small>for .NET</small>
-        </a>
-
-        <button class="current-target" @onclick="ShowRunSetup" disabled="@(isBusy || isPickingSolution)" title="@(string.IsNullOrWhiteSpace(solutionPath) ? "Choose a solution or project" : solutionPath)">
-            <span class="target-icon">◇</span>
-            <span>
-                <small>Current target</small>
-                <strong>@(string.IsNullOrWhiteSpace(solutionPath) ? "Choose solution or project" : Path.GetFileName(solutionPath))</strong>
-            </span>
-            <i>⌄</i>
-        </button>
-
-        <div class="workspace-switch @(report is null ? "unavailable" : null)" role="tablist" aria-label="Coverage workspace" aria-hidden="@(report is null)">
-            <button class="@(workspaceMode == WorkspaceMode.Metrics ? "active" : null)" @onclick="ShowMetrics" disabled="@(report is null)"><span>▦</span> Metrics</button>
-            <button class="@(workspaceMode == WorkspaceMode.Explorer ? "active" : null)" @onclick="ShowExplorer" disabled="@(report is null)"><span>⌘</span> Explorer</button>
-        </div>
-
-        <div class="command-actions">
-            <button class="command-button" @onclick="ShowImportSetup"><span>＋</span> Open report</button>
-            <button class="primary run-command" @onclick="RunCoverage" disabled="@(isBusy || isPickingSolution || string.IsNullOrWhiteSpace(solutionPath))">
-                <span class="run-symbol">▶</span>@(isBusy ? "Running…" : "Run coverage")
-                @if (!isBusy && lastRunOutcome == CoverageRunOutcome.TestsFailed && testSummary is not null)
-                {
-                    <span class="run-failure-badge">@testSummary.Failed failed</span>
-                }
-            </button>
-        </div>
+<PageTitle>CoverScope · Review changes</PageTitle>
+@{
+    var activeRun = repository is null ? null : Runs.ActiveRecord(repository.Root);
+    var showProgress = activeRun is not null && !setup && view != "Runs" && (selected is null || selected.Record.Id == activeRun.Id);
+}
+<div class="review-app">
+    <header class="review-header">
+        <div class="review-brand"><img src="coverscope-mark.svg" alt="" /> CoverScope</div>
+        <span class="review-target" title="@(repository?.Root)">@(repository is null ? "Committed change review" : System.IO.Path.GetFileName(repository.Root))</span>
+        <button class="primary push" @onclick="OpenSetup" disabled="@(busy || activeRun is not null)">New run</button>
     </header>
-
-    @if (isSetupOpen)
-    {
-        <div class="topbar-extension-layer" @onclick="CloseSetup">
-            <section class="topbar-extension" role="dialog" aria-modal="true" aria-labelledby="setup-title" @onclick:stopPropagation="true">
-                <div class="extension-inner">
-                    <header class="setup-header">
-                        <div>
-                            <span class="eyebrow">COLLECTION</span>
-                            <h2 id="setup-title">@(mode == Mode.Run ? "Run coverage" : "Open coverage report")</h2>
-                        </div>
-                        <div class="setup-tabs" role="tablist">
-                            <button class="@(mode == Mode.Run ? "active" : null)" @onclick="ShowRunSetup">Run solution</button>
-                            <button class="@(mode == Mode.Import ? "active" : null)" @onclick="ShowImportSetup">Open report</button>
-                            <button class="drawer-close" @onclick="CloseSetup" aria-label="Close setup">×</button>
-                        </div>
-                    </header>
-
-                    @if (mode == Mode.Run)
-                    {
-                        <div class="path-form">
-                            <div class="path-field">
-                                <span>Solution or test project</span>
-                                <div class="path-input-row">
-                                    <input @bind="solutionPath" placeholder="C:\Code\MyApp\MyApp.sln" disabled="@(isBusy || isPickingSolution)" />
-                                    <button class="browse-button" @onclick="ChooseSolution" disabled="@(isBusy || isPickingSolution)">@(isPickingSolution ? "Opening…" : "Browse…")</button>
-                                </div>
-                            </div>
-                            <button class="primary" @onclick="RunCoverage" disabled="@(isBusy || isPickingSolution || string.IsNullOrWhiteSpace(solutionPath))">@(isBusy ? "Running tests…" : "Run coverage")</button>
-                        </div>
-                        <p class="form-hint">Uses <code>dotnet test --collect:"XPlat Code Coverage"</code>. Test projects need <code>coverlet.collector</code>.</p>
-
-                        <details class="exclusion-panel">
-                            <summary><span>Collection exclusions</span><small>Saved automatically when coverage runs</small></summary>
-                            <div class="exclusion-grid">
-                                <label><span>Assemblies / types</span><input @bind="settings.Exclude" placeholder="[*Tests]*,[MyApp.Generated]*" /><small>Coverlet filter expressions separated by commas.</small></label>
-                                <label><span>Source files</span><input @bind="settings.ExcludeByFile" placeholder="**/Migrations/*.cs,**/*.g.cs" /><small>Glob patterns separated by commas.</small></label>
-                                <label><span>Attributes</span><input @bind="settings.ExcludeByAttribute" placeholder="GeneratedCodeAttribute,CompilerGeneratedAttribute" /><small>Attribute names separated by commas.</small></label>
-                                <label class="check-option"><input type="checkbox" @bind="settings.SkipAutoProps" /><span>Skip auto-implemented properties</span></label>
-                            </div>
-                        </details>
-                    }
-                    else
-                    {
-                        <div class="import-actions">
-                            <label class="file-upload"><span>Choose Cobertura XML</span><InputFile OnChange="ImportReportFile" accept=".xml,text/xml,application/xml" /></label>
-                            <span class="or-divider">or use a local path</span>
-                        </div>
-                        <div class="path-form report-form">
-                            <label><span>Cobertura XML report</span><input @bind="reportPath" placeholder="C:\Code\MyApp\TestResults\…\coverage.cobertura.xml" /></label>
-                            <label><span>Source root <small>(optional)</small></span><input @bind="sourceRoot" placeholder="C:\Code\MyApp" /></label>
-                            <button class="primary" @onclick="OpenReport">Open report</button>
-                        </div>
-                    }
-
-                    @if (!string.IsNullOrWhiteSpace(statusMessage) && (mode == Mode.Run || lastRunOutcome is null))
-                    {
-                        @if (mode == Mode.Run && lastRunOutcome == CoverageRunOutcome.TestsFailed && testSummary is not null)
-                        {
-                            <section class="test-results-panel" aria-labelledby="test-results-title">
-                                <header class="test-results-header">
-                                    <span class="failure-icon">!</span>
-                                    <div>
-                                        <h3 id="test-results-title">@FailureHeading(testSummary.Failed)</h3>
-                                        <p>@statusMessage</p>
-                                    </div>
-                                    <div class="test-summary-counts" aria-label="Test summary">
-                                        <span class="failed"><strong>@testSummary.Failed</strong> failed</span>
-                                        <span class="passed"><strong>@testSummary.Passed</strong> passed</span>
-                                        <span><strong>@testSummary.Skipped</strong> skipped</span>
-                                        <span><strong>@testSummary.Total</strong> total</span>
-                                        <span><strong>@FormatDuration(testSummary.Duration)</strong></span>
-                                    </div>
-                                </header>
-
-                                <div class="failure-groups">
-                                    @if (testSummary.Failures.Count == 0)
-                                    {
-                                        <div class="failure-list-unavailable">The test runner reported failures but did not include individual test details. Open the full test output below.</div>
-                                    }
-                                    @foreach (var assemblyGroup in testSummary.Failures.GroupBy(x => AssemblyLabel(x.Assembly)))
-                                    {
-                                        <details class="failure-assembly" open="@(testSummary.Failures.Count <= 5)">
-                                            <summary>
-                                                <span><b>◆</b>@assemblyGroup.Key</span>
-                                                <small>@FailureHeading(assemblyGroup.Count())</small>
-                                            </summary>
-                                            @foreach (var failure in assemblyGroup)
-                                            {
-                                                <details class="test-failure" open="@(testSummary.Failures.Count == 1)">
-                                                    <summary>
-                                                        <span class="failed-test-name">@failure.Name<small>@failure.FullyQualifiedName</small></span>
-                                                        <span class="failed-test-meta">
-                                                            @if (!string.IsNullOrWhiteSpace(failure.SourceFile) && failure.SourceLine is not null)
-                                                            {
-                                                                <small>@(Path.GetFileName(failure.SourceFile)):@failure.SourceLine</small>
-                                                            }
-                                                            <small>@FormatDuration(failure.Duration)</small>
-                                                        </span>
-                                                    </summary>
-                                                    <div class="failure-details">
-                                                        @if (!string.IsNullOrWhiteSpace(failure.Message))
-                                                        {
-                                                            <pre class="exception-message">@failure.Message</pre>
-                                                        }
-                                                        <div class="failure-actions">
-                                                            <button @onclick="() => CopyFailure(failure)">Copy details</button>
-                                                            @if (CanOpenFailureSource(failure))
-                                                            {
-                                                                <button class="open-source-action" @onclick="() => OpenFailureSource(failure)">Open source</button>
-                                                            }
-                                                        </div>
-                                                        @if (!string.IsNullOrWhiteSpace(failure.StackTrace))
-                                                        {
-                                                            <details class="stack-trace"><summary>Stack trace</summary><pre>@failure.StackTrace</pre></details>
-                                                        }
-                                                        @if (!string.IsNullOrWhiteSpace(failure.StandardOutput) || !string.IsNullOrWhiteSpace(failure.StandardError))
-                                                        {
-                                                            <details class="captured-output"><summary>Captured output</summary><pre>@failure.StandardOutput@failure.StandardError</pre></details>
-                                                        }
-                                                    </div>
-                                                </details>
-                                            }
-                                        </details>
-                                    }
-                                </div>
-
-                                @if (!string.IsNullOrWhiteSpace(runOutput))
-                                {
-                                    <details class="full-test-output"><summary>Full test output</summary><pre>@runOutput</pre></details>
-                                }
-                            </section>
-                        }
-                        else
-                        {
-                            <div class="status @(statusIsError ? "error" : "success")">
-                                <span>@(statusIsError ? "!" : "✓")</span>
-                                <div>
-                                    <strong>@statusMessage</strong>
-                                    @if (!string.IsNullOrWhiteSpace(runOutput))
-                                    {
-                                        <details><summary>Full test output</summary><pre>@runOutput</pre></details>
-                                    }
-                                </div>
-                            </div>
-                        }
-                    }
+    <nav class="review-nav" aria-label="Review navigation">
+        @foreach (var name in new[] { "Overview", "Changes", "Verification", "Runs" })
+        {
+            <button aria-current="@(view == name || (view == "Type" && name == "Changes") ? "page" : null)" @onclick="() => Navigate(name)" disabled="@busy">@name</button>
+        }
+    </nav>
+    <main class="@(setup ? "setup-main" : "workspace-main")">
+        @if (!string.IsNullOrWhiteSpace(error)) { <p class="notice error" role="alert">@error</p> }
+        @if (setup)
+        {
+            <section class="surface setup" aria-busy="@busy">
+                <div class="setup-heading"><span class="eyebrow">New review</span><h1>Compare committed changes</h1><p class="muted">Choose your workspace, comparison branch, and the evidence to collect.</p></div>
+                <label for="review-target-path">Solution or project</label>
+                <div class="path-selection">
+                    <input id="review-target-path" @bind="targetPath" @bind:event="oninput" @onkeydown="HandleTargetKey" disabled="@busy" placeholder="Path to SolutionExample.slnx" />
+                    <button class="browse-button" @onclick="Browse" disabled="@busy">Browse…</button>
+                    <button @onclick="Inspect" disabled="@(busy || string.IsNullOrWhiteSpace(targetPath))">@(busy ? "Loading…" : "Load repository")</button>
                 </div>
+                @if (busy) { <div class="loading-status" role="status" aria-live="polite"><span class="loading-spinner" aria-hidden="true"></span><span>Loading repository and saved configuration…</span></div> }
+                @if (repository is not null)
+                {
+                    <fieldset class="setup-options" disabled="@busy">
+                    <p class="setup-repository"><span class="eyebrow">Checked out</span><strong>@(repository.Branch ?? "Detached HEAD")</strong><code>@Short(repository.Commit)</code></p>
+                    <label>Target branch<select @bind="targetBranch"><option value="">Select a local reference</option>
+                        @foreach (var branch in repository.Branches) { <option value="@branch">@branch</option> }
+                    </select></label>
+                    <p class="muted">Uses the common ancestor with this local reference. Fetch through your Git client.</p>
+                    <div class="setup-checks">
+                        <label class="check"><input type="checkbox" @bind="testChecks" /><span>Tests and coverage<small>Build, test results, and execution coverage</small></span></label>
+                        <label class="check"><input type="checkbox" @bind="formatCheck" /><span>Formatting analysis<small>Whitespace and style findings; no edits</small></span></label>
+                    </div>
+                    <label>Build configuration<input @bind="configuration" /></label>
+                    <p class="muted">Git comparison and C# source indexing are included. Pending Git changes block a run.</p>
+                    <div class="setup-actions"><button class="primary" @onclick="Start" disabled="@(busy || activeRun is not null || string.IsNullOrWhiteSpace(targetBranch))">Start run</button>
+                    @if (selected is not null) { <button @onclick="() => setup = false" disabled="@busy">Back to review</button> }</div>
+                    </fieldset>
+                }
             </section>
-        </div>
-    }
-
-    @if (!isSetupOpen && !string.IsNullOrWhiteSpace(statusMessage))
-    {
-        <button class="topbar-notice @(statusIsError ? "error" : "success")" @onclick="OpenStatusDetails">
-            <span>@(statusIsError ? "!" : "✓")</span>
-            <strong>@statusMessage</strong>
-            <small>Details</small>
-        </button>
-    }
-
-    <main class="app-workspace">
-
-@if (isSolutionBrowserOpen)
-{
-    <div class="solution-browser-backdrop" @onclick="CloseSolutionBrowser">
-        <section class="solution-browser" role="dialog" aria-modal="true" aria-labelledby="solution-browser-title" @onclick:stopPropagation="true">
-            <header>
-                <div>
-                    <span class="eyebrow">LOCAL FILESYSTEM</span>
-                    <h2 id="solution-browser-title">Choose a solution or project</h2>
-                </div>
-                <button class="browser-close" @onclick="CloseSolutionBrowser" aria-label="Close">×</button>
-            </header>
-
-            <div class="browser-locations" aria-label="Quick locations">
-                @foreach (var location in browserLocations)
+        }
+        @if (activeRun is { } active && !showProgress && !starting)
+        {
+            <section class="notice" role="status" aria-live="polite">
+                <div class="row"><strong>@active.Status</strong><span>@Runs.Phase(active.Repository)</span>
+                <button @onclick="() => Select(active)">View run</button>
+                @if (active.Status is not ReviewStatus.CancellationIncomplete)
+                { <button class="push" @onclick="Cancel" disabled="@(active.Status == ReviewStatus.Cancelling)">Cancel run</button> }</div>
+                <p class="muted">Cancellation discards all analysis for this attempt, including completed checks.</p>
+                @if (active.OperationalError is not null) { <p class="error">@active.OperationalError</p> }
+            </section>
+        }
+        @if (starting)
+        {
+            <ReviewProgress PreparingTarget="@targetPath" Phase="Checking repository and preparing run…" />
+        }
+        else if (showProgress && activeRun is not null)
+        {
+            <ReviewProgress @key="activeRun.Id" Record="activeRun" Phase="@Runs.Phase(activeRun.Repository)" OnCancel="Cancel" />
+        }
+        else if (!setup && view == "Runs")
+        {
+            <h1>Run history</h1>
+            <section class="surface">
+                @if (history.Count == 0) { <p class="muted">No saved runs for this repository.</p> }
+                @foreach (var run in history)
                 {
-                    <button @onclick="() => BrowseTo(location.Path)" title="@location.Path">@location.Label</button>
+                    <div class="list-row"><div><button class="text-button" @onclick="() => Select(run)">@run.StartedAt.ToLocalTime().ToString("g") · @run.Status</button><p class="muted">@Short(run.Commit) → @run.TargetRef</p></div></div>
                 }
-            </div>
-
-            <div class="browser-path">
-                <button @onclick="BrowseUp" disabled="@(browserParent is null)" title="Parent folder">↑</button>
-                <input @bind="browserPathInput" aria-label="Folder path" />
-                <button @onclick="BrowseToTypedPath">Go</button>
-            </div>
-
-            @if (!string.IsNullOrWhiteSpace(browserError))
+            </section>
+        }
+        else if (!setup && selected is not null)
+        {
+            <div class="title-row"><div><p class="eyebrow">Run @Short(selected.Record.Id) · @selected.Record.Status</p><h1>@System.IO.Path.GetFileNameWithoutExtension(selected.Record.TargetPath)</h1></div>
+                <button @onclick="() => exporting = !exporting">Copy / export</button></div>
+            <div class="context"><span>Commit <code>@Short(selected.Record.Commit)</code></span><span>Target @selected.Record.TargetRef <code>@Short(selected.Record.TargetCommit)</code></span><span>Common ancestor <code>@Short(selected.Record.Baseline)</code></span></div>
+            @if (exporting)
             {
-                <div class="browser-error">@browserError</div>
+                <section class="surface export-panel"><div class="row"><button @onclick="() => jsonExport = false">Markdown summary</button><button @onclick="() => jsonExport = true">Full JSON evidence</button><button @onclick="CopyExport">Copy</button><button @onclick="DownloadExport">Download</button></div>
+                <label>Export preview<textarea readonly>@ExportText</textarea></label></section>
             }
-
-            <div class="browser-entries" role="listbox" aria-label="Folders, solutions, and projects">
-                @if (browserEntries.Count == 0)
+            @if (selected.Record.Status == ReviewStatus.Cancelled)
+            { <section class="surface"><h2>Run cancelled</h2><p>All analysis was discarded. Only the run record remains.</p></section> }
+            else if (selected.Record.Status is ReviewStatus.Cancelling or ReviewStatus.CancellationIncomplete or ReviewStatus.Preparing or ReviewStatus.Running or ReviewStatus.Finalising)
+            {
+                <section class="surface"><p>Analysis is unavailable while this attempt is active or unresolved.</p>
+                    @if (repository is not null && Runs.ActiveRecord(repository.Root) is null)
+                    { <label class="check"><input type="checkbox" @bind="recoveryChecked" /> I have verified that external processes from this attempt have stopped.</label><button @onclick="Recover" disabled="@(!recoveryChecked)">Discard interrupted analysis</button> }
+                </section>
+            }
+            else if (selected.Evidence is { } evidence)
+            {
+                <p class="muted">@evidence.SourceConsistency</p>
+                @if (view == "Overview")
                 {
-                    <div class="browser-empty">No subfolders or supported solution/project files here.</div>
+                    <div class="overview-workspace"><ReviewOverview Evidence="evidence" OnChanges="OpenChanges" OnVerification="OpenVerification" OnType="OpenType" /></div>
                 }
+                else if (view == "Verification")
+                { <div class="verification-workspace"><ReviewVerification Evidence="evidence" OnFile="OpenFile" OnType="OpenType" /></div> }
+                else if (view == "Type" && selectedType is not null)
+                { <ReviewType Evidence="evidence" Type="selectedType" InitialMemberId="@selectedMemberId" OnType="OpenType" OnFile="OpenFile" OnVerification="OpenVerification" /> }
                 else
-                {
-                    @foreach (var entry in browserEntries)
-                    {
-                        <button class="browser-entry @(entry.IsDirectory ? "directory" : "project")"
-                                @onclick="() => ActivateBrowserEntry(entry)"
-                                title="@entry.Path">
-                            <span class="browser-entry-icon">@(entry.IsDirectory ? "▸" : "◆")</span>
-                            <span>@entry.Name</span>
-                            @if (!entry.IsDirectory)
-                            {
-                                <small>@Path.GetExtension(entry.Name).TrimStart('.').ToUpperInvariant()</small>
-                            }
-                        </button>
-                    }
-                }
-            </div>
-
-            <footer>
-                <span>Select a folder to open it, or select a solution/project to use it.</span>
-                <button @onclick="CloseSolutionBrowser">Cancel</button>
-            </footer>
-        </section>
-    </div>
-}
-
-@if (collectionState.IsActive)
-{
-    <CollectionProgress Phase="collectionState.Phase"
-                        StartedAt="collectionState.StartedAt"
-                        TargetPath="solutionPath" />
-}
-else if (report is not null)
-{
-    <section class="workspace-header">
-        <div>
-            <span class="eyebrow">COVERAGE WORKSPACE</span>
-            <div class="report-title-row" title="@RunDetailsTitle">
-                <h2>@report.Name</h2>
-                @if (currentRun is not null)
-                {
-                    <span class="run-status-badge @RunStatusClass">@CoverageRunLabelFormatter.StatusLabel(currentRun.Status)</span>
-                }
-            </div>
-            <p>@report.Packages.Count projects · @report.Files.Count files · generated @report.GeneratedAt.ToLocalTime().ToString("g")</p>
-        </div>
-        <div class="report-actions">
-            @if (workspaceMode == WorkspaceMode.Explorer)
-            {
-                <div class="rings">
-                    <MetricRing Metric="report.Lines" Label="lines" Color="#9600e7" />
-                    <MetricRing Metric="report.Branches" Label="branches" Color="#2f1cd8" />
-                    <MetricRing Metric="report.Methods" Label="methods" Color="#34d399" />
-                </div>
+                { <ReviewChanges Evidence="evidence" InitialFile="@selectedFile" OnType="OpenType" OnMember="OpenMember" /> }
             }
-        </div>
-    </section>
-
-    @if (lastRunOutcome == CoverageRunOutcome.TestsFailed && testSummary is not null)
-    {
-        <button class="failed-run-warning" @onclick="OpenStatusDetails">
-            <span>!</span>
-            <strong>Coverage collected from a run with @(FailureHeading(testSummary.Failed).ToLowerInvariant())</strong>
-            <small>@testSummary.Passed passed · View failures</small>
-        </button>
-    }
-
-    <section class="workspace" hidden="@(workspaceMode != WorkspaceMode.Explorer)">
-        <aside class="explorer hierarchy-explorer">
-            <div class="explorer-toolbar">
-                <div class="toolbar-title"><h3>Coverage explorer</h3><span>@VisibleFileCount files · @VisibleClassCount classes</span></div>
-                <input @bind="filter" @bind:event="oninput" placeholder="Find project, namespace, file, class, method…" aria-label="Filter coverage hierarchy" />
-                <div class="filter-row">
-                    <label>Show
-                        <select @bind="coverageFilter">
-                            <option value="@ExplorerCoverageFilter.All">Everything</option>
-                            <option value="@ExplorerCoverageFilter.Gaps">With gaps</option>
-                            <option value="@ExplorerCoverageFilter.BelowEighty">Below 80%</option>
-                            <option value="@ExplorerCoverageFilter.Untested">Untested</option>
-                        </select>
-                    </label>
-                    <label>Sort
-                        <select @bind="sortMode">
-                            <option value="@ExplorerSortMode.Name">Name</option>
-                            <option value="@ExplorerSortMode.Lowest">Lowest coverage</option>
-                            <option value="@ExplorerSortMode.Highest">Highest coverage</option>
-                        </select>
-                    </label>
-                </div>
-            </div>
-
-            @if (ExplorerProjects.Count == 0)
-            {
-                <div class="tree-empty">No coverage nodes match these filters.</div>
-            }
-            @foreach (var projectNode in ExplorerProjects)
-            {
-                <details class="tree-level project-level" open="@expandedProjects.Contains(projectNode.Project)">
-                    <summary class="tree-row project-row" @onclick="() => ToggleProject(projectNode.Project)" @onclick:preventDefault="true">
-                        <span><b class="node-icon project-icon">P</b><span class="node-label">@projectNode.Project.Name<small>@projectNode.Namespaces.Count namespaces</small></span></span>
-                        <CoveragePill Metric="projectNode.Project.LineMetric" />
-                    </summary>
-                    @if (expandedProjects.Contains(projectNode.Project))
-                    {
-                        @foreach (var namespaceNode in projectNode.Namespaces)
-                        {
-                            <details class="tree-level namespace-level" open="@expandedNamespaces.Contains(namespaceNode.Namespace)">
-                                <summary class="tree-row namespace-row" @onclick="() => ToggleNamespace(namespaceNode.Namespace)" @onclick:preventDefault="true">
-                                    <span><b class="node-icon namespace-icon">N</b><span class="node-label">@namespaceNode.Namespace.Name<small>@namespaceNode.Files.Count files</small></span></span>
-                                    <CoveragePill Metric="namespaceNode.Namespace.LineMetric" />
-                                </summary>
-                                @if (expandedNamespaces.Contains(namespaceNode.Namespace))
-                                {
-                                    @foreach (var fileNode in namespaceNode.Files)
-                                    {
-                                        <details class="tree-level file-level" open="@expandedFiles.Contains(fileNode.File)">
-                                            <summary class="tree-row file-tree-row @(selectedFile == fileNode.File ? (selectedClass is null ? "selected" : "active-parent") : null)"
-                                                     @onclick="() => ToggleFile(fileNode.File)" @onclick:preventDefault="true">
-                                                <span><b class="node-icon file-node-icon">CS</b><span class="node-label">@fileNode.File.DisplayName<small>@FileDirectory(fileNode.File.RelativePath)</small></span></span>
-                                                <CoveragePill Metric="fileNode.LineMetric" />
-                                            </summary>
-                                            @if (expandedFiles.Contains(fileNode.File))
-                                            {
-                                                @foreach (var classNode in fileNode.Classes)
-                                                {
-                                                    <details class="tree-level class-level" open="@expandedClasses.Contains(classNode.Class)">
-                                                        <summary class="tree-row class-row @(selectedClass == classNode.Class ? "selected" : null)"
-                                                                 @onclick="() => ToggleClass(projectNode.Project, classNode.Class)" @onclick:preventDefault="true">
-                                                            <span>
-                                                                <b class="node-icon class-icon">C</b>
-                                                                <span class="node-label">
-                                                                    @classNode.Class.Name
-                                                                    <small>
-                                                                        @if (classNode.IsPartial)
-                                                                        {
-                                                                            <i class="partial-tag">partial</i>
-                                                                        }
-                                                                        @classNode.Class.FullName
-                                                                    </small>
-                                                                </span>
-                                                            </span>
-                                                            <CoveragePill Metric="classNode.Class.LineMetric" />
-                                                        </summary>
-                                                        @if (expandedClasses.Contains(classNode.Class))
-                                                        {
-                                                            @foreach (var method in classNode.Methods)
-                                                            {
-                                                                <button class="tree-row method-row @(selectedMethod == method ? "selected" : null)" @onclick="() => SelectMethod(projectNode.Project, classNode.Class, method)">
-                                                                    <span><b class="node-icon method-icon">M</b><span class="node-label">@method.Name<small>line @method.StartLine · @method.Signature</small></span></span>
-                                                                    <CoveragePill Metric="method.Lines" />
-                                                                </button>
-                                                            }
-                                                        }
-                                                    </details>
-                                                }
-                                            }
-                                        </details>
-                                    }
-                                }
-                            </details>
-                        }
-                    }
-                </details>
-            }
-        </aside>
-
-        <article class="source-panel">
-            @if (selectedFile is null)
-            {
-                <div class="empty-state"><span>{ }</span><h3>Choose a file, class, or method</h3><p>Select an item in the hierarchy to inspect its annotated source.</p></div>
-            }
-            else
-            {
-                <header class="source-header">
-                    <div>
-                        <h3>@selectedFile.DisplayName</h3>
-                        <p>@selectedFile.RelativePath</p>
-                        @if (selectedClass is not null)
-                        {
-                            <div class="source-selection">
-                                @selectedClass.FullName
-                            @if (selectedMethod is not null)
-                            {
-                                <text> → @selectedMethod.Name</text>
-                            }
-                            </div>
-                        }
-                    </div>
-                    <div class="source-summary"><span><i class="dot covered"></i>@selectedFile.LineMetric.Covered covered</span><span><i class="dot uncovered"></i>@(selectedFile.LineMetric.Total - selectedFile.LineMetric.Covered) missed</span></div>
-                </header>
-                @if (sourceLines.Count == 0)
-                {
-                    <div class="empty-state compact"><h3>Source file not found</h3><p>Enter the repository directory as the source root and reopen the report.</p></div>
-                }
-                else
-                {
-                    <div class="code-table" role="table" aria-label="Annotated source code">
-                        @foreach (var line in sourceLines)
-                        {
-                            <div id="line-@line.Number" class="code-line @line.State @(targetLine == line.Number ? "target" : null)" role="row">
-                                <span class="hit-count">@(line.Coverage is null ? "" : line.Coverage.Hits.ToString())</span>
-                                <span class="line-number">@line.Number</span>
-                                <code>@line.Text</code>
-                                @if (line.Coverage?.IsPartial == true)
-                                {
-                                    <span class="branch-badge">@line.Coverage.BranchesCovered/@line.Coverage.BranchesTotal branches</span>
-                                }
-                            </div>
-                        }
-                    </div>
-                }
-            }
-        </article>
-        </section>
-
-    <MetricsDashboard Report="report" IsVisible="@(workspaceMode == WorkspaceMode.Metrics)" OnOpenClass="OpenMetricClass" />
-}
-else
-{
-    <section class="workspace-empty-state">
-        <div class="empty-visual" aria-hidden="true">
-            <div class="empty-orbit orbit-one"></div>
-            <div class="empty-orbit orbit-two"></div>
-            <div class="empty-coverage-ring"><img src="coverscope-mark.svg" alt="" /></div>
-        </div>
-        <div class="empty-copy">
-            <span class="eyebrow">COVERAGE WORKSPACE</span>
-            <h1>No coverage loaded.</h1>
-            <p>Choose a solution or open a report from the toolbar to begin.</p>
-        </div>
-    </section>
-}
-
+            @if (selected.Record.OperationalError is not null) { <p class="notice error">@selected.Record.OperationalError</p> }
+        }
+        else if (!setup && view != "Runs") { <p class="muted">Start a run or select one from history.</p> }
     </main>
+    <footer><span>Local evidence for your review · no automatic acceptance decision</span><span role="status" aria-live="polite">@notification</span></footer>
 </div>
+<SolutionPicker @ref="picker" OnSelected="PickTarget" />
 
 @code {
-    private const long MaxReportBytes = 50 * 1024 * 1024;
-    private readonly CoverageCollectionState collectionState = new();
-    private enum Mode { Run, Import }
-    private enum WorkspaceMode { Explorer, Metrics }
-
-    private Mode mode = Mode.Run;
-    private WorkspaceMode workspaceMode = WorkspaceMode.Metrics;
-    private ExplorerSortMode sortMode = ExplorerSortMode.Lowest;
-    private ExplorerCoverageFilter coverageFilter = ExplorerCoverageFilter.All;
-    private CoverageSettings settings = new();
-    private string solutionPath = string.Empty;
-    private string reportPath = string.Empty;
-    private string sourceRoot = string.Empty;
-    private string filter = string.Empty;
-    private string? statusMessage;
-    private string? runOutput;
-    private string? importedReportName;
-    private bool statusIsError;
-    private CoverageRunOutcome? lastRunOutcome;
-    private CoverageRunManifest? currentRun;
-    private TestRunSummary? testSummary;
-    private bool isBusy;
-    private bool isPickingSolution;
-    private bool isSetupOpen;
-    private bool isSolutionBrowserOpen;
-    private string browserPathInput = string.Empty;
-    private string? browserParent;
-    private string? browserError;
-    private IReadOnlyList<SolutionBrowserLocation> browserLocations = [];
-    private IReadOnlyList<SolutionBrowserEntry> browserEntries = [];
-    private CoverageReport? report;
-    private FileCoverage? selectedFile;
-    private ClassCoverage? selectedClass;
-    private MethodCoverage? selectedMethod;
-    private List<SourceLine> sourceLines = [];
-    private int targetLine;
-    private readonly HashSet<PackageCoverage> expandedProjects = new(ReferenceEqualityComparer.Instance);
-    private readonly HashSet<NamespaceCoverage> expandedNamespaces = new(ReferenceEqualityComparer.Instance);
-    private readonly HashSet<FileCoverage> expandedFiles = new(ReferenceEqualityComparer.Instance);
-    private readonly HashSet<ClassCoverage> expandedClasses = new(ReferenceEqualityComparer.Instance);
-
-    private ExplorerProjection Explorer =>
-        Projections.GetExplorer(report, filter, coverageFilter, sortMode);
-    private IReadOnlyList<ExplorerProject> ExplorerProjects => Explorer.Projects;
-    private int VisibleFileCount => Explorer.FileCount;
-    private int VisibleClassCount => Explorer.ClassCount;
+    private string targetPath = "", targetBranch = "", configuration = "Debug", view = "Overview", notification = "";
+    private bool setup = true, busy, starting, testChecks = true, formatCheck = true, exporting, jsonExport, recoveryChecked;
+    private string? error, selectedFile, selectedMemberId;
+    private RepositoryContext? repository;
+    private ReviewSnapshot? selected;
+    private TypeEvidence? selectedType;
+    private SolutionPicker? picker;
+    private IReadOnlyList<ReviewRecord> history = [];
+    private string ExportText => selected is null ? "" : jsonExport ? Exports.Json(selected) : Exports.Markdown(selected);
 
     protected override async Task OnInitializedAsync()
     {
-        settings = await SettingsStore.LoadAsync();
-        solutionPath = LaunchContext.InitialTargetPath ?? string.Empty;
+        Runs.Changed += OnRunChanged;
+        targetPath = Launch.InitialTargetPath ?? "";
+        if (targetPath.Length > 0) { await Inspect(); }
     }
-
-    protected override async Task OnAfterRenderAsync(bool firstRender)
+    private static string Short(string? value) => value is null ? "Unavailable" : value[..Math.Min(10, value.Length)];
+    private void OpenSetup() { setup = true; error = null; }
+    private void Navigate(string name) { view = name; setup = false; }
+    private async Task Browse()
     {
-        // OnAfterRenderAsync is not called during static prerendering. The
-        // process-scoped claim also prevents refreshes or additional circuits
-        // from starting the explicit target more than once.
-        if (!firstRender || !StartupCoverage.TryBegin(out var targetPath))
-            return;
-
-        solutionPath = targetPath!;
-        await RunCoverage();
-        await InvokeAsync(StateHasChanged);
+        if (picker is null || busy) { return; }
+        try { await picker.OpenAsync(targetPath); }
+        catch (JSException ex) { error = "The picker could not open: " + ex.Message; }
     }
-
-    private void ShowMetrics()
+    private async Task PickTarget(string path) { targetPath = path; await Inspect(); }
+    private async Task HandleTargetKey(KeyboardEventArgs args)
     {
-        if (report is null) return;
-        workspaceMode = WorkspaceMode.Metrics;
-        isSetupOpen = false;
+        if (args.Key == "Enter" && !busy && !string.IsNullOrWhiteSpace(targetPath)) { await Inspect(); }
     }
-
-    private void ShowExplorer()
+    private async Task Inspect()
     {
-        if (report is null) return;
-        workspaceMode = WorkspaceMode.Explorer;
-        isSetupOpen = false;
-    }
-
-    private void ShowRunSetup()
-    {
-        mode = Mode.Run;
-        isSetupOpen = true;
-    }
-
-    private void ShowImportSetup()
-    {
-        mode = Mode.Import;
-        isSetupOpen = true;
-    }
-
-    private void CloseSetup() => isSetupOpen = false;
-
-    private void OpenStatusDetails()
-    {
-        if (lastRunOutcome is not null) mode = Mode.Run;
-        isSetupOpen = true;
-    }
-
-    private async Task ChooseSolution()
-    {
-        isPickingSolution = true;
-        statusMessage = null;
+        if (busy) { return; }
+        busy = true; error = null;
         try
         {
-            browserLocations = SolutionBrowser.GetLocations();
-            ApplyBrowserSnapshot(await Task.Run(() => SolutionBrowser.Open(solutionPath)));
-            isSolutionBrowserOpen = true;
+            StateHasChanged();
+            await Task.Yield();
+            repository = await Git.InspectAsync(targetPath);
+            var settings = await Store.SettingsAsync(repository.Root);
+            targetBranch = settings.TargetBranch; testChecks = settings.Tests; formatCheck = settings.Formatting; configuration = settings.Configuration;
+            history = await Store.HistoryAsync(repository.Root);
         }
-        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or ArgumentException)
-        {
-            statusMessage = $"The solution browser could not be opened: {ex.Message}";
-            statusIsError = true;
-        }
-        finally
-        {
-            isPickingSolution = false;
-        }
+        catch (Exception ex) { error = ex.Message; repository = null; }
+        finally { busy = false; }
     }
-
-    private async Task BrowseTo(string path) =>
-        ApplyBrowserSnapshot(await Task.Run(() => SolutionBrowser.Browse(path)));
-
-    private Task BrowseToTypedPath() => BrowseTo(browserPathInput);
-
-    private Task BrowseUp() => browserParent is null ? Task.CompletedTask : BrowseTo(browserParent);
-
-    private async Task ActivateBrowserEntry(SolutionBrowserEntry entry)
+    private async Task Start()
     {
-        if (entry.IsDirectory)
-        {
-            await BrowseTo(entry.Path);
-            return;
-        }
-
-        var result = SolutionBrowser.ValidateSelection(entry.Path);
-        if (!result.Success || result.SelectedPath is null)
-        {
-            browserError = result.Message;
-            return;
-        }
-
-        solutionPath = result.SelectedPath;
-        ClearTestRunResult();
-        statusMessage = $"Selected {Path.GetFileName(solutionPath)}.";
-        statusIsError = false;
-        CloseSolutionBrowser();
-    }
-
-    private void ApplyBrowserSnapshot(SolutionBrowserSnapshot snapshot)
-    {
-        browserPathInput = snapshot.DirectoryPath;
-        browserParent = snapshot.ParentPath;
-        browserEntries = snapshot.Entries;
-        browserError = snapshot.ErrorMessage;
-    }
-
-    private void CloseSolutionBrowser() => isSolutionBrowserOpen = false;
-
-    private async Task RunCoverage()
-    {
-        if (isBusy || isPickingSolution || string.IsNullOrWhiteSpace(solutionPath))
-            return;
-
-        isBusy = true;
-        mode = Mode.Run;
-        isSetupOpen = false;
-        statusMessage = null;
-        runOutput = null;
-        lastRunOutcome = null;
-        testSummary = null;
-        collectionState.Start();
-        await InvokeAsync(StateHasChanged);
-
-        var progress = new Progress<CoverageCollectionPhase>(phase =>
-        {
-            if (collectionState.Advance(phase))
-                StateHasChanged();
-        });
-
+        if (busy || repository is null || Runs.ActiveRecord(repository.Root) is not null) { return; }
+        var request = new ReviewRequest(targetPath, new(targetBranch, testChecks, formatCheck, configuration));
+        busy = true; starting = true; error = null;
+        setup = false; view = "Overview"; exporting = false;
         try
         {
-            await SettingsStore.SaveAsync(settings);
-            var result = await Runner.RunAsync(solutionPath, settings, progress: progress);
-            statusMessage = result.Message;
-            statusIsError = result.Outcome != CoverageRunOutcome.Succeeded;
-            runOutput = result.Output;
-            lastRunOutcome = result.Outcome;
-            testSummary = result.Tests;
-            currentRun = result.Run;
-            if (result.ReportPath is not null
-                && result.Outcome is CoverageRunOutcome.Succeeded or CoverageRunOutcome.TestsFailed)
-            {
-                reportPath = result.ReportPath;
-                sourceRoot = Path.GetDirectoryName(Path.GetFullPath(solutionPath)) ?? string.Empty;
-                collectionState.Advance(CoverageCollectionPhase.BuildingMetrics);
-                await InvokeAsync(StateHasChanged);
-                await LoadReport(result.Outcome == CoverageRunOutcome.TestsFailed);
-            }
-            else
-            {
-                mode = Mode.Run;
-                isSetupOpen = true;
-            }
+            // Render preparation before repository checks or run persistence can wait.
+            StateHasChanged();
+            await Task.Yield();
+            repository = await Git.InspectAsync(request.TargetPath);
+            var record = await Runs.StartAsync(request);
+            selected = new(record, null);
+            starting = false;
+            await Refresh();
         }
-        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or ArgumentException)
-        {
-            statusMessage = ex.Message;
-            statusIsError = true;
-            lastRunOutcome = CoverageRunOutcome.ExecutionFailed;
-            mode = Mode.Run;
-            isSetupOpen = true;
-        }
-        finally
-        {
-            isBusy = false;
-            collectionState.Complete(lastRunOutcome ?? CoverageRunOutcome.ExecutionFailed);
-        }
+        catch (Exception ex) { error = ex.Message; setup = true; }
+        finally { busy = false; starting = false; }
     }
-
-    private Task OpenReport()
+    private async Task Cancel()
     {
-        ClearTestRunResult();
-        currentRun = null;
-        importedReportName = null;
-        return LoadReport();
+        if (repository is null) { return; }
+        try { await Runs.CancelAsync(repository.Root); await Refresh(); }
+        catch (Exception ex) { error = ex.Message; }
     }
-
-    private async Task ImportReportFile(InputFileChangeEventArgs args)
+    private async Task Select(ReviewRecord record)
     {
+        try { selected = await Store.ReadAsync(record); setup = false; view = "Overview"; selectedType = null; selectedFile = null; exporting = false; recoveryChecked = false; }
+        catch (Exception ex) { error = ex.Message; }
+    }
+    private void OnRunChanged() => _ = InvokeAsync(async () => { await Refresh(); StateHasChanged(); });
+    private async Task Refresh()
+    {
+        if (repository is null) { return; }
         try
         {
-            ClearTestRunResult();
-            currentRun = null;
-            importedReportName = Path.GetFileNameWithoutExtension(args.File.Name);
-            var importDirectory = Path.Combine(
-                Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
-                "CoverScope",
-                "imports");
-            Directory.CreateDirectory(importDirectory);
-            reportPath = Path.Combine(importDirectory, $"{Guid.NewGuid():N}.cobertura.xml");
-            await using (var input = args.File.OpenReadStream(MaxReportBytes))
-            await using (var output = File.Create(reportPath))
+            history = await Store.HistoryAsync(repository.Root);
+            if (selected is not null)
             {
-                await input.CopyToAsync(output);
-                await output.FlushAsync();
-            }
-            await LoadReport();
-        }
-        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or InvalidOperationException)
-        {
-            statusMessage = ex.Message;
-            statusIsError = true;
-        }
-    }
-
-    private async Task LoadReport(bool preserveRunStatus = false)
-    {
-        try
-        {
-            report = Parser.Parse(reportPath, sourceRoot);
-            currentRun ??= await RunStore.ReadForArtifactAsync(reportPath);
-            if (currentRun is not null)
-            {
-                report = report with
-                {
-                    Name = CoverageRunLabelFormatter.Format(currentRun),
-                    GeneratedAt = currentRun.StartedAtUtc
-                };
-            }
-            else if (!string.IsNullOrWhiteSpace(importedReportName))
-            {
-                report = report with { Name = importedReportName };
-            }
-            workspaceMode = WorkspaceMode.Metrics;
-            selectedFile = null;
-            selectedClass = null;
-            selectedMethod = null;
-            sourceLines = [];
-            ResetExplorerExpansion();
-            var firstProject = report.Packages.OrderBy(x => x.LineMetric.Percent).FirstOrDefault();
-            var firstClass = firstProject?.Namespaces.SelectMany(x => x.Classes).OrderBy(x => x.LineMetric.Percent).FirstOrDefault();
-            if (firstProject is not null && firstClass is not null) await SelectClass(firstProject, firstClass);
-            if (!preserveRunStatus)
-            {
-                statusMessage = $"Loaded {report.Packages.Count} projects and {report.Files.Count} files.";
-                statusIsError = false;
-            }
-            isSetupOpen = preserveRunStatus;
-        }
-        catch (Exception ex) when (ex is ArgumentException or IOException or UnauthorizedAccessException
-            or System.Xml.XmlException or NotSupportedException)
-        {
-            report = null;
-            selectedFile = null;
-            sourceLines = [];
-            statusMessage = ex.Message;
-            statusIsError = true;
-            isSetupOpen = true;
-        }
-    }
-
-    private void ClearTestRunResult()
-    {
-        lastRunOutcome = null;
-        testSummary = null;
-        runOutput = null;
-    }
-
-    private string? RunDetailsTitle => currentRun is null
-        ? null
-        : $"Run {currentRun.RunId} · {currentRun.StartedAtUtc:O}";
-
-    private string RunStatusClass => currentRun?.Status switch
-    {
-        CoverageRunStatus.Completed => "completed",
-        CoverageRunStatus.CompletedWithTestFailures => "test-failures",
-        CoverageRunStatus.InProgress => "incomplete",
-        CoverageRunStatus.Cancelled => "cancelled",
-        _ => "failed"
-    };
-
-    private static string FailureHeading(int count) => count == 1 ? "1 test failed" : $"{count} tests failed";
-
-    private static string AssemblyLabel(string assembly) =>
-        string.IsNullOrWhiteSpace(assembly) ? "Test assembly" : assembly;
-
-    private static string FormatDuration(TimeSpan duration)
-    {
-        if (duration.TotalMinutes >= 1) return $"{(int)duration.TotalMinutes}m {duration.Seconds}s";
-        if (duration.TotalSeconds >= 1) return $"{duration.TotalSeconds:0.##}s";
-        return $"{Math.Max(0, duration.TotalMilliseconds):0}ms";
-    }
-
-    private bool CanOpenFailureSource(TestFailure failure) => FindFailureFile(failure) is not null;
-
-    private async Task OpenFailureSource(TestFailure failure)
-    {
-        var match = FindFailureFile(failure);
-        if (match is null) return;
-
-        workspaceMode = WorkspaceMode.Explorer;
-        isSetupOpen = false;
-        selectedFile = match.Value.File;
-        selectedClass = match.Value.File.Classes.FirstOrDefault(x => x.Lines.Any(y => y.Number == failure.SourceLine));
-        selectedMethod = selectedClass?.Methods.FirstOrDefault(x => x.SourceLines.Any(y => y.Number == failure.SourceLine));
-        sourceLines = Parser.ReadSource(match.Value.File).ToList();
-        targetLine = failure.SourceLine ?? 0;
-        StateHasChanged();
-        await Task.Yield();
-        if (targetLine > 0) await JS.InvokeVoidAsync("CoverScope.scrollToLine", $"line-{targetLine}");
-    }
-
-    private (PackageCoverage Project, FileCoverage File)? FindFailureFile(TestFailure failure)
-    {
-        if (report is null || string.IsNullOrWhiteSpace(failure.SourceFile)) return null;
-        try
-        {
-            var failurePath = Path.GetFullPath(failure.SourceFile);
-            foreach (var project in report.Packages)
-            {
-                var file = project.Files.FirstOrDefault(x => x.ResolvedPath is not null
-                    && string.Equals(Path.GetFullPath(x.ResolvedPath), failurePath, StringComparison.OrdinalIgnoreCase));
-                if (file is not null) return (project, file);
+                var running = Runs.ActiveRecord(repository.Root);
+                selected = running?.Id == selected.Record.Id ? new(running, null) : await Store.ReadAsync(selected.Record);
             }
         }
-        catch (Exception ex) when (ex is ArgumentException or NotSupportedException or PathTooLongException) { }
-        return null;
+        catch (Exception ex) { error = ex.Message; }
     }
-
-    private async Task CopyFailure(TestFailure failure)
+    private async Task Recover()
     {
-        var location = failure.SourceFile is null
-            ? string.Empty
-            : $"{Environment.NewLine}{failure.SourceFile}{(failure.SourceLine is null ? string.Empty : $":{failure.SourceLine}")}";
-        var text = $"{failure.FullyQualifiedName}{location}{Environment.NewLine}{failure.Message}{Environment.NewLine}{failure.StackTrace}".Trim();
-        await JS.InvokeVoidAsync("CoverScope.copyText", text);
+        if (!recoveryChecked || selected is null) { return; }
+        try { await Runs.RecoverAsync(selected.Record); await Refresh(); }
+        catch (Exception ex) { error = ex.Message; }
     }
-
-    private Task SelectClass(PackageCoverage project, ClassCoverage classItem) =>
-        SelectSource(project, classItem, null, classItem.Lines.FirstOrDefault()?.Number ?? 0);
-
-    private Task SelectFile(FileCoverage file)
+    private void OpenChanges() { selectedFile = null; view = "Changes"; }
+    private void OpenVerification() => view = "Verification";
+    private void OpenType(TypeEvidence type) { selectedType = type; selectedMemberId = null; view = "Type"; }
+    private void OpenMember((TypeEvidence Type, string MemberId) selection) { selectedType = selection.Type; selectedMemberId = selection.MemberId; view = "Type"; }
+    private void OpenFile(string path) { selectedFile = path; view = "Changes"; }
+    private async Task CopyExport()
     {
-        selectedFile = file;
-        selectedClass = null;
-        selectedMethod = null;
-        sourceLines = Parser.ReadSource(file).ToList();
-        targetLine = 0;
-        return Task.CompletedTask;
+        try { await JS.InvokeVoidAsync("CoverScope.copyText", ExportText); notification = "Copied export"; }
+        catch (JSException) { notification = "Copy unavailable. Select the export preview and copy it manually."; }
     }
-
-    private Task SelectMethod(PackageCoverage project, ClassCoverage classItem, MethodCoverage method) =>
-        SelectSource(project, classItem, method, method.StartLine);
-
-    private async Task OpenMetricClass(CoverageMetricRow row)
-    {
-        var classItem = row.ClassFragments.FirstOrDefault();
-        if (classItem is null) return;
-        workspaceMode = WorkspaceMode.Explorer;
-        filter = row.FullName;
-        coverageFilter = ExplorerCoverageFilter.All;
-        ExpandSelection(row.Project, classItem);
-        await SelectClass(row.Project, classItem);
-    }
-
-    private async Task SelectSource(PackageCoverage project, ClassCoverage classItem, MethodCoverage? method, int line)
-    {
-        selectedClass = classItem;
-        selectedMethod = method;
-        selectedFile = project.Files.FirstOrDefault(x => string.Equals(x.RelativePath, classItem.RelativePath, StringComparison.OrdinalIgnoreCase));
-        sourceLines = selectedFile is null ? [] : Parser.ReadSource(selectedFile).ToList();
-        targetLine = line;
-        StateHasChanged();
-        await Task.Yield();
-        if (targetLine > 0) await JS.InvokeVoidAsync("CoverScope.scrollToLine", $"line-{targetLine}");
-    }
-
-    private static string FileDirectory(string relativePath)
-    {
-        var directory = Path.GetDirectoryName(relativePath);
-        return string.IsNullOrWhiteSpace(directory) ? "project root" : directory;
-    }
-
-    private void ResetExplorerExpansion()
-    {
-        expandedProjects.Clear();
-        expandedNamespaces.Clear();
-        expandedFiles.Clear();
-        expandedClasses.Clear();
-
-        var projection = Explorer;
-        foreach (var projectNode in projection.Projects)
-            expandedProjects.Add(projectNode.Project);
-
-        if (projection.Projects.Count != 1)
-            return;
-
-        foreach (var namespaceNode in projection.Projects[0].Namespaces)
-        {
-            expandedNamespaces.Add(namespaceNode.Namespace);
-            if (namespaceNode.Files.Count == 1)
-                expandedFiles.Add(namespaceNode.Files[0].File);
-        }
-    }
-
-    private void ToggleProject(PackageCoverage project) => Toggle(expandedProjects, project);
-
-    private void ToggleNamespace(NamespaceCoverage namespaceItem) =>
-        Toggle(expandedNamespaces, namespaceItem);
-
-    private Task ToggleFile(FileCoverage file)
-    {
-        Toggle(expandedFiles, file);
-        return SelectFile(file);
-    }
-
-    private Task ToggleClass(PackageCoverage project, ClassCoverage classItem)
-    {
-        Toggle(expandedClasses, classItem);
-        return SelectClass(project, classItem);
-    }
-
-    private void ExpandSelection(PackageCoverage project, ClassCoverage classItem)
-    {
-        expandedProjects.Add(project);
-        var namespaceItem = project.Namespaces.FirstOrDefault(x => x.Classes.Contains(classItem));
-        if (namespaceItem is not null)
-            expandedNamespaces.Add(namespaceItem);
-        var file = project.Files.FirstOrDefault(x =>
-            string.Equals(x.RelativePath, classItem.RelativePath, StringComparison.OrdinalIgnoreCase));
-        if (file is not null)
-            expandedFiles.Add(file);
-        expandedClasses.Add(classItem);
-    }
-
-    private static void Toggle<T>(HashSet<T> expanded, T item)
-        where T : class
-    {
-        if (!expanded.Remove(item))
-            expanded.Add(item);
-    }
-
+    private async Task DownloadExport() => await JS.InvokeVoidAsync("CoverScope.download", "coverscope-" + selected!.Record.Id + (jsonExport ? ".json" : ".md"), ExportText);
+    public void Dispose() => Runs.Changed -= OnRunChanged;
 }

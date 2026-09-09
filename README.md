@@ -5,230 +5,81 @@
 <h1 align="center">CoverScope</h1>
 
 <p align="center">
-  A cross-platform, local-first .NET code coverage explorer with clear metrics,
-  source highlighting, test-failure insights, and Cobertura support.
+  Review your .NET changes with source diffs, tests, coverage,
+  and code relationships in one place.
 </p>
 
 > [!NOTE]
-> CoverScope is currently in early beta. The core coverage workflow is functional, but packaging, history, comparisons, and editor integrations are still evolving.
+> CoverScope is currently in beta. Expect rough edges and changes as the tool evolves. Feedback from real-world use helps shape the next release.
 
-<p align="center">
-  <img src="docs/assets/coverscope-demo.gif" alt="CoverScope switching between coverage metrics and source exploration" />
-</p>
+<!-- Add a demo of the current committed-review workflow here before public launch. -->
 
 ## Why CoverScope?
 
-Coverage data is useful only when it is easy to navigate and understand. CoverScope separates coverage collection from visualization, providing a focused standalone workspace without depending on an IDE extension.
+Reviewing a change means more than reading a diff. You need to understand **what changed**, **how it was implemented**, **how it was verified**, and **what else deserves attention**.
 
-It can run coverage for a solution or test project through Coverlet, import existing Cobertura reports, merge reports from multiple test projects, and connect coverage gaps directly to annotated source code.
+CoverScope brings that information into a local workspace. Start with an overview of your branch, explore the changed code, inspect test results and coverage, and follow relationships to related types.
+
+Review visually, revisit a saved run, or share the same evidence with an agent through Markdown and JSON exports. No model connection is required. You decide what the evidence means and whether the change is ready.
 
 ## Features
 
-- Solution-wide line, branch, and method coverage metrics
-- Project → namespace → class metrics drill-down
-- Project → namespace → source file → class → method explorer
-- Covered, partially covered, and uncovered source-line highlighting
-- Covered, missed, and total line counts
-- Sorting by coverage percentage, missed lines, size, or name
-- Filters for coverage gaps, thresholds, minimum size, and text
-- Automatic merging of reports from multiple test projects
-- Partial-class aggregation across source files
-- Structured failed-test results with exceptions, stack traces, output, and source locations
-- Coverage results remain available when tests fail but collection succeeds
-- Persistent Coverlet exclusions for assemblies, files, attributes, and auto-properties
-- Cross-platform solution and project browser
-- Local-first operation with no required external service
+- **Explore branch changes** — navigate changed files, types, members, and tests, with diffs and full-source views.
+- **See changes and coverage together** — identify added or modified code and whether it was exercised, without losing the surrounding context.
+- **Focus on your branch** — filter coverage and formatting findings to changed files or lines.
+- **Investigate related code** — explore an interactive graph with pan, zoom, grouped interfaces and implementations, and direct navigation to types.
+- **Inspect verification results** — review builds, test failures, coverage gaps, and formatting findings together. Available coverage remains useful even when tests fail.
+- **Keep and share reviews** — reopen saved runs or export concise Markdown and detailed JSON evidence.
+- **Work locally** — use a standalone browser workspace without requiring an IDE extension or model integration.
 
 ## Requirements
 
-- [.NET 10 SDK](https://dotnet.microsoft.com/download/dotnet/10.0)
-- [`coverlet.collector`](https://github.com/coverlet-coverage/coverlet) in test projects when running new coverage collections
+- .NET 10 SDK and Git.
+- A Git repository with committed changes and a clean worktree.
+- A locally available branch to compare against.
+- For tests and coverage, xUnit v2 test projects configured with `Microsoft.NET.Test.Sdk`, `xunit.runner.visualstudio`, and `coverlet.collector`.
 
-Recent .NET test templates commonly include Coverlet. Otherwise, add it to each test project:
+Code exploration currently focuses on C#. The graph shows static code relationships to help you investigate possible effects; it does not prove runtime impact. See the [review guide](docs/review-guide.md#requirements) for setup details and [current limitations](docs/review-guide.md#evidence-limits-and-known-limitations).
 
-```bash
-dotnet add path/to/Tests.csproj package coverlet.collector
-```
+## Installation
 
-## Install from GitHub Packages
+Install the beta from NuGet.org:
 
-The `DD3.CoverScope.Tool` package is currently published to the private
-CoverScope GitHub Packages registry. Create a GitHub personal access token
-(classic) with `read:packages` and access to this private repository. Keep the
-token outside the repository.
-
-Add the package source once:
-
-```bash
-dotnet nuget add source https://nuget.pkg.github.com/diogod3/index.json \
-  --name github-diogod3 \
-  --username YOUR_GITHUB_USERNAME \
-  --password YOUR_GITHUB_PACKAGES_TOKEN \
-  --store-password-in-clear-text
-```
-
-> [!CAUTION]
-> `--store-password-in-clear-text` writes the credential to your user-level
-> NuGet configuration. Omit that option where your platform's NuGet credential
-> provider can store the token securely. Never place a token in this repository
-> or a committed `NuGet.Config`.
-
-Install the tool:
-
-```bash
-dotnet tool install --global DD3.CoverScope.Tool \
-  --version 0.1.0-beta.3 \
-  --add-source https://nuget.pkg.github.com/diogod3/index.json
-```
-
-Update to a newer published version:
-
-```bash
-dotnet tool update --global DD3.CoverScope.Tool \
-  --add-source https://nuget.pkg.github.com/diogod3/index.json
-```
-
-Uninstall it:
-
-```bash
-dotnet tool uninstall --global DD3.CoverScope.Tool
-```
-
-## Usage
-
-Start CoverScope from the directory containing the code you want to inspect:
-
-```bash
+```text
+dotnet tool install --global DD3.CoverScope.Tool --version 0.2.0-beta.1 --source https://api.nuget.org/v3/index.json
 coverscope
 ```
 
-CoverScope binds only to `127.0.0.1` on an available port, then prints and
-opens the friendlier `http://coverscope.localhost:<port>` address. It also prints
-`http://127.0.0.1:<port>` as a fallback and runs until you press Ctrl+C. Neither
-address requires hosts-file changes, administrator privileges, or a DNS service.
-The solution browser starts in the directory where the command was invoked.
+To update an existing installation to the latest beta:
 
-You can preselect a solution or project and control browser and port behavior:
-
-```bash
-coverscope MySolution.sln
-coverscope tests/MyProject.Tests.csproj --no-browser
-coverscope MySolution.sln --port 5073
-coverscope --help
-coverscope --version
+```text
+dotnet tool update --global DD3.CoverScope.Tool --prerelease --source https://api.nuget.org/v3/index.json
 ```
 
-## Development
+To build and try a local package, see [development](docs/development.md#try-a-local-package).
 
-Clone the repository:
+## Your first review
 
-```bash
-git clone https://github.com/diogod3/CoverScope.git
-cd CoverScope
+1. **Choose a solution or project.** Use the file picker or enter its path.
+2. **Select the branch to compare against.** CoverScope compares your checked-out commit with the common ancestor of that branch.
+3. **Choose your verification checks and start the review.** Follow progress as the evidence is collected.
+4. **Explore the results.** Review the changes, inspect coverage and test results, and follow related code in the graph.
+
+You can also supply a target when launching:
+
+```text
+coverscope path/to/MySolution.slnx
 ```
 
-Restore and run:
+This opens setup with the target selected. Once a review finishes, return to it through **Runs** or export the evidence to share with a colleague or agent.
 
-```bash
-dotnet restore DD3.CoverScope.sln
-dotnet run --project src/DD3.CoverScope.Web/DD3.CoverScope.Web.csproj
-```
+## Documentation and feedback
 
-Alternatively, open `DD3.CoverScope.sln` in Visual Studio and start `DD3.CoverScope.Web`.
+- [Review guide](docs/review-guide.md) — navigation, coverage, formatting, saved runs, and evidence limits.
+- [Development](docs/development.md) — building, testing, architecture, and releases.
+- [Beta release notes](docs/releases/v0.2.0-beta.1.md) — what's changed and compatibility notes.
 
-Open the local URL printed by the application.
-
-## Running coverage
-
-1. Select the current target in the command bar.
-2. Browse to a `.sln`, `.slnx`, or test-project file.
-3. Configure optional collection exclusions.
-4. Select **Run coverage**.
-
-CoverScope runs the equivalent of:
-
-```bash
-dotnet test --collect:"XPlat Code Coverage"
-```
-
-Each coverage attempt is stored beside the selected target in its own
-`<target-root>/.coverscope/reports/<run-id>/` directory. The directory contains
-the coverage and test-result artifacts together with a versioned `run.json`
-manifest. CoverScope does not modify Git ignore files, so repositories that
-should not track generated reports should add:
-
-```gitignore
-.coverscope/reports/
-```
-
-Existing `coverage-output/` directories are left untouched.
-
-If tests fail, CoverScope presents the failed tests separately from infrastructure or collection errors. When a usable coverage report was still produced, it remains available with a visible failed-run warning.
-
-## Opening an existing report
-
-1. Select **Open report**.
-2. Choose a Cobertura XML file or enter its local path.
-3. Provide a source root if the report paths cannot be resolved automatically.
-
-## Running the tests
-
-```bash
-dotnet test DD3.CoverScope.sln
-```
-
-Build and inspect the tool package:
-
-```bash
-dotnet pack src/DD3.CoverScope.Web/DD3.CoverScope.Web.csproj --configuration Release
-pwsh ./scripts/Inspect-Package.ps1 -PackagePath ./artifacts/packages/DD3.CoverScope.Tool.0.1.0-beta.3.nupkg
-pwsh ./scripts/Smoke-Test.ps1 -PackagePath ./artifacts/packages/DD3.CoverScope.Tool.0.1.0-beta.3.nupkg
-```
-
-## Maintainer release process
-
-Pull requests build, test, pack, inspect, and smoke-test the tool on Windows,
-Linux, and macOS. CI never publishes packages.
-
-To prepare a release:
-
-1. Update `Version` in
-   `src/DD3.CoverScope.Web/DD3.CoverScope.Web.csproj`.
-2. Commit the version change using Conventional Commits, for example
-   `chore(release): prepare v0.1.0-beta.3`.
-3. Merge the validated pull request into `main`.
-4. Create and push an annotated `v*` tag whose value exactly matches the
-   project version with a leading `v`.
-
-```bash
-git tag -a v0.1.0-beta.3 -m "v0.1.0-beta.3"
-git push origin v0.1.0-beta.3
-```
-
-The release workflow validates the tag against the project version, runs the
-full verification, publishes to GitHub Packages with `GITHUB_TOKEN`, uploads
-the `.nupkg` as a workflow artifact, and creates a prerelease GitHub Release
-containing the package. Do not create a release tag until the corresponding
-version is ready to publish.
-
-## Repository structure
-
-- `src/DD3.CoverScope.Web` — Blazor application, coverage services, and static assets
-- `tests/DD3.CoverScope.Tests` — parser, merger, settings, filesystem, metrics, and TRX tests
-- `scripts` — package inspection and installed-tool smoke tests
-- `.github/workflows` — cross-platform CI and tag-triggered package release
-- `DD3.CoverScope.sln` — solution entry point
-- `global.json` — .NET 10 SDK selection policy
-
-## Data and privacy
-
-CoverScope runs locally. Solution paths, source files, coverage reports, and test output are not sent to an external service by the application.
-
-Collection settings are stored under the current user's local application-data directory. Imported reports are copied to a CoverScope application-data folder for local processing.
-
-## Roadmap
-
-TBD
+Found something confusing or incorrect? Open a repository issue with your version, reproduction steps, and expected/actual behaviour. Screenshots and exported summaries can help explain the problem. Check them for private code, paths, or test output before sharing.
 
 ## Development disclosure
 

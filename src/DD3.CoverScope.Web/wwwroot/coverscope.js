@@ -1,4 +1,16 @@
 window.CoverScope = {
+    openDialog: function (dialog) {
+        if (!dialog.open) dialog.showModal();
+    },
+    closeDialog: function (dialog) {
+        if (dialog.open) dialog.close();
+    },
+    download: function (filename, text) {
+        const url = URL.createObjectURL(new Blob([text], {type: filename.endsWith('.json') ? 'application/json' : 'text/markdown'}));
+        const link = document.createElement('a');
+        link.href = url; link.download = filename; link.click();
+        setTimeout(() => URL.revokeObjectURL(url), 1000);
+    },
     scrollToLine: function (id) {
         window.requestAnimationFrame(function () {
             const element = document.getElementById(id);

@@ -1,0 +1,8 @@
+@using DD3.CoverScope.Models.Reviews
+<ReviewExplorer Evidence="Evidence" InitialFile="@InitialFile" OnType="OnType" />
+@code {
+    [Parameter, EditorRequired] public ReviewEvidence Evidence { get; set; } = default!;
+    [Parameter] public string? InitialFile { get; set; }
+    [Parameter] public EventCallback<TypeEvidence> OnType { get; set; }
+    [Parameter] public EventCallback<(TypeEvidence Type, string MemberId)> OnMember { get; set; }
+}

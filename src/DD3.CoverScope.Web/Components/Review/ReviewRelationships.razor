@@ -1,0 +1,208 @@
+@using DD3.CoverScope.Models.Reviews
+@using DD3.CoverScope.Services.Reviews
+@inject IJSRuntime JS
+@implements IAsyncDisposable
+<section class="work-panel graph-panel">
+    <header class="panel-header">
+        <h2>Branch relationships</h2>
+        <div class="graph-controls"><label>Go to type<select value="@selectedNode?.Id" @onchange="ChangeFocus">@foreach (var node in nodes.OrderBy(x => x.Type.FullName)) { <option value="@node.Type.Id">@node.Type.FullName · @node.Type.Change</option> }</select></label>
+            <label>Relationships<select @bind="revision" @bind:after="ClearEdge"><option value="Comparison">Branch comparison</option><option value="Head">Reviewed</option><option value="Baseline">Baseline</option></select></label></div>
+        <label class="check graph-filter"><input type="checkbox" @bind="changedOnly" @bind:after="ChangeFilter" />Changed objects only</label>
+        <div class="graph-toolbar"><button title="Zoom in" aria-label="Zoom in" @onclick='() => Transform("in")'>+</button><button title="Zoom out" aria-label="Zoom out" @onclick='() => Transform("out")'>−</button><button @onclick='() => Transform("fit")'>Fit all</button><button @onclick='() => Transform("reset")'>100%</button><button @onclick="CenterSelection" disabled="@(selectedNode is null)">Center selected</button><button @onclick="ToggleInspector" aria-pressed="@inspectorOpen" disabled="@(selectedNode is null && selectedEdge is null)">Details</button><small>@nodes.Count types · @VisibleEdges.Count() relationships</small></div>
+        <p class="muted">@(changedOnly ? "Changed C# types only; unchanged objects are hidden." : "Changed C# types, related objects, and their interface/implementation groups.") Dependencies point to the exact referenced type.</p>
+        @if (!Evidence.Code.Complete) { <p class="notice">The code index is incomplete; this graph shows the available evidence.</p> }
+    </header>
+    <div class="graph-workspace @(inspectorOpen ? "details-open" : null)">
+    <div class="graph-canvas">
+        <svg @ref="canvas" class="relationship-canvas" role="group" aria-label="Interactive branch relationship graph. Drag to pan; use the wheel or buttons to zoom. Select a node to inspect it." tabindex="0" viewBox="@($"0 0 {graph.Width} {graph.Height}")" data-graph-width="@graph.Width" data-graph-height="@graph.Height" data-focus-x="@(FocusNode?.X + 120)" data-focus-y="@(FocusNode?.Y + 34)">
+            <defs><marker id="@arrowId" markerWidth="9" markerHeight="9" refX="8" refY="4" orient="auto" markerUnits="userSpaceOnUse"><path d="M0,0 L8,4 L0,8 Z" fill="#a89cdd" /></marker></defs>
+            <g class="graph-world">
+                @foreach (var group in graph.Groups)
+                {
+                    <g class="graph-implementation-group">
+                        <title>@string.Join(" · ", group.Members.Select(id => nodeIndex[id].Type.FullName))</title>
+                        <rect x="@group.X" y="@group.Y" width="@group.Width" height="@group.Height" rx="14" />
+                        <text x="@(group.X + 20)" y="@(group.Y + 24)">Interfaces / implementations</text>
+                    </g>
+                }
+                @foreach (var edge in VisibleEdges)
+                {
+                    var from = nodeIndex[edge.From]; var to = nodeIndex[edge.To];
+                    var path = EdgePath(from, to, edge.Kind);
+                    <g data-edge="true" class="graph-edge @edge.Change.ToLowerInvariant() @(selectedEdge == edge ? "selected" : null) @(TouchesSelection(edge) ? "connected" : "subdued")" role="button" tabindex="0" aria-label="@(from.Type.Name + " " + edge.Kind + " " + to.Type.Name + ", " + edge.Change)" @onclick="() => SelectEdge(edge)" @onkeydown="e => SelectEdgeKey(e, edge)">
+                        <title>@from.Type.FullName → @to.Type.FullName · @edge.Kind · @edge.Change</title>
+                        <path class="graph-hit" d="@path" />
+                        <path d="@path" marker-end="@($"url(#{arrowId})")" />
+                        <text x="@((from.X + to.X) / 2 + 120)" y="@((from.Y + to.Y) / 2 + 24)" text-anchor="middle">@edge.Kind · @edge.Change</text>
+                    </g>
+                }
+                @foreach (var node in nodes)
+                {
+                    <g data-node="true" class="graph-node @(IsTestType(node.Type) ? "test-node" : null) @node.Type.Change.ToLowerInvariant() @(selectedNode?.Id == node.Type.Id ? "selected" : null) @(ConnectedToSelection(node.Type.Id) ? "" : "subdued")" transform="@($"translate({node.X} {node.Y})")" role="button" tabindex="0" aria-label="@(node.Type.FullName + ", " + NodeCaption(node.Type))" @onclick="() => SelectNodeClick(node.Type)" @ondblclick="() => OpenType(node.Type)" @onkeydown="e => SelectNodeKey(e, node.Type)">
+                        <title>@node.Type.FullName · @node.Type.Project · @NodeCaption(node.Type) · @node.Connections connected types · Double-click to open type</title>
+                        <rect width="240" height="68" rx="9" /><text x="14" y="27">@Short(node.Type.Name, 28)</text><text class="node-caption" x="14" y="49">@NodeCaption(node.Type)</text>
+                        @if (IsTestType(node.Type)) { <rect class="test-outline" x="5" y="5" width="230" height="58" rx="6" /> }
+                    </g>
+                }
+            </g>
+        </svg>
+        @if (nodes.Count == 0) { <p class="graph-empty">No changed indexed types.</p> }
+        else if (!VisibleEdges.Any()) { <p class="graph-empty">No indexed relationships in this view. Types remain available to inspect.</p> }
+    </div>
+    <aside class="graph-inspector panel-scroll" hidden="@(!inspectorOpen)" aria-label="Graph selection details" @ref="inspector">
+        <div class="title-row"><h3>Selection details</h3><button aria-label="Close graph details" @onclick="CloseInspector">Close</button></div>
+        @if (selectedEdge is not null)
+        {
+            <strong>@Name(selectedEdge.From) → @Name(selectedEdge.To)</strong><p>@selectedEdge.Kind · @selectedEdge.Change</p>
+            @foreach (var occurrence in selectedEdge.Occurrences.Where(x => revision == "Comparison" || x.Revision == revision))
+            { <p class="muted">@(occurrence.Revision == "Head" ? "Reviewed" : "Baseline") · @occurrence.Path:@occurrence.Line</p> }
+        }
+        else if (selectedNode is not null)
+        {
+            <strong title="@selectedNode.FullName">@selectedNode.FullName</strong><p class="muted">@selectedNode.Change · @selectedNode.Project · @nodeIndex[selectedNode.Id].Connections connected types in the comparison</p>
+            <div class="row"><button @onclick="CenterSelection">Center type</button><button @onclick="() => OnType.InvokeAsync(selectedNode)">Open type</button></div>
+            @if (graph.Groups.FirstOrDefault(x => x.Members.Contains(selectedNode.Id)) is { } group)
+            {
+                <h4>Interfaces / implementations</h4>
+                @foreach (var id in group.Members)
+                { <button class="graph-related-type ellipsis" title="@nodeIndex[id].Type.FullName" @onclick="() => SelectNode(nodeIndex[id].Type)">@nodeIndex[id].Type.Name · @nodeIndex[id].Type.Kind</button> }
+            }
+        }
+    </aside>
+    </div>
+    <footer class="panel-footer"><span>Arrow: referencing → referenced type. Green: added relationship · Dashed red: removed · Grey: retained.</span><span class="muted">Drag to pan · Wheel to zoom · Double-click a node to open its type. Double outline: Tests. Static references do not establish runtime impact.</span></footer>
+</section>
+@code {
+    [Parameter, EditorRequired] public ReviewEvidence Evidence { get; set; } = default!;
+    [Parameter] public TypeEvidence? Type { get; set; }
+    [Parameter] public EventCallback<TypeEvidence> OnType { get; set; }
+    private readonly string arrowId = "relation-arrow-" + Guid.NewGuid().ToString("N");
+    private ElementReference canvas, inspector;
+    private TypeEvidence? selectedNode;
+    private ReviewGraphPresentation.Edge? selectedEdge;
+    private ReviewGraphPresentation.Layout graph = new([], [], null, 1040, 420);
+    private List<ReviewGraphPresentation.Node> nodes => graph.Nodes;
+    private Dictionary<string, ReviewGraphPresentation.Node> nodeIndex = [];
+    private IEnumerable<ReviewGraphPresentation.Edge> VisibleEdges => graph.Edges.Where(x => revision == "Comparison" || x.Occurrences.Any(o => o.Revision == revision));
+    private ReviewGraphPresentation.Node? FocusNode => selectedNode is null ? null : nodeIndex.GetValueOrDefault(selectedNode.Id);
+    private string revision = "Comparison";
+    private string? previousType;
+    private ReviewEvidence? previousEvidence;
+    private bool initialise, attached, inspectorOpen, inspectPending;
+    private bool changedOnly = true;
+    private int selectionVersion;
+    protected override void OnParametersSet()
+    {
+        if (previousType == Type?.Id && ReferenceEquals(previousEvidence, Evidence)) { return; }
+        previousType = Type?.Id; previousEvidence = Evidence;
+        revision = "Comparison";
+        inspectorOpen = false;
+        Rebuild(Type?.Id);
+    }
+    private void Rebuild(string? preferredType)
+    {
+        selectionVersion++;
+        graph = ReviewGraphPresentation.Build(Evidence.Code, Type?.Id, changedOnly);
+        nodeIndex = nodes.ToDictionary(x => x.Type.Id);
+        selectedNode = nodeIndex.GetValueOrDefault(preferredType ?? "")?.Type ?? nodeIndex.GetValueOrDefault(graph.HubId ?? "")?.Type;
+        selectedEdge = null; initialise = true;
+        if (selectedNode is null) { inspectorOpen = false; }
+        inspectPending = inspectorOpen;
+    }
+    private void ChangeFilter() => Rebuild(selectedNode?.Id);
+    private void ToggleInspector()
+    {
+        selectionVersion++;
+        inspectorOpen = !inspectorOpen;
+        inspectPending = inspectorOpen;
+    }
+    private void CloseInspector() { selectionVersion++; inspectorOpen = false; }
+    private void SelectEdge(ReviewGraphPresentation.Edge edge)
+    {
+        selectionVersion++;
+        selectedEdge = edge;
+        inspectorOpen = true;
+        inspectPending = true;
+    }
+    private async Task ChangeFocus(ChangeEventArgs e)
+    {
+        if (nodeIndex.GetValueOrDefault(e.Value?.ToString() ?? "") is not { } node) { return; }
+        SelectNode(node.Type);
+        await CenterSelection();
+    }
+    private void ClearEdge() { selectedEdge = null; inspectPending = inspectorOpen; }
+    private bool TouchesSelection(ReviewGraphPresentation.Edge edge) => selectedNode is null || edge.From == selectedNode.Id || edge.To == selectedNode.Id;
+    private bool ConnectedToSelection(string id) => selectedNode is null || id == selectedNode.Id
+        || VisibleEdges.Any(x => (x.From == id && x.To == selectedNode.Id) || (x.To == id && x.From == selectedNode.Id));
+    private void SelectNode(TypeEvidence type) { selectionVersion++; selectedNode = type; selectedEdge = null; inspectorOpen = true; inspectPending = true; }
+    private static bool IsTestType(TypeEvidence type) => type.Members.Any(x => x.IsTest);
+    private static string NodeCaption(TypeEvidence type) => $"{type.Kind} · {type.Change}" + (IsTestType(type) ? " · Tests" : "");
+    private async Task SelectNodeClick(TypeEvidence type)
+    {
+        var version = ++selectionVersion;
+        selectedNode = type; selectedEdge = null;
+        // Keep the clicked node in place until the double-click can arrive. Opening
+        // the inspector immediately can move the node out from under the pointer.
+        await Task.Delay(500);
+        if (version != selectionVersion) { return; }
+        inspectorOpen = true; inspectPending = true;
+    }
+    private async Task OpenType(TypeEvidence type)
+    {
+        selectionVersion++;
+        await OnType.InvokeAsync(type);
+    }
+    private void SelectNodeKey(KeyboardEventArgs e, TypeEvidence type) { if (e.Key is "Enter" or " ") { SelectNode(type); } }
+    private void SelectEdgeKey(KeyboardEventArgs e, ReviewGraphPresentation.Edge edge) { if (e.Key is "Enter" or " ") { SelectEdge(edge); } }
+    private static string EdgePath(ReviewGraphPresentation.Node from, ReviewGraphPresentation.Node to, string kind)
+    {
+        var offset = kind == "Calls" ? -18 : kind == "Uses type" ? 18 : 0;
+        if (from.Type.Id == to.Type.Id)
+        { return $"M{from.X + 200},{from.Y} C{from.X + 320},{from.Y - 90} {from.X - 80},{from.Y - 90} {from.X + 40},{from.Y}"; }
+        if (from.X == to.X)
+        {
+            var down = to.Y > from.Y;
+            var y1 = from.Y + (down ? 68 : 0); var y2 = to.Y + (down ? 0 : 68);
+            var middle = (y1 + y2) / 2;
+            return $"M{from.X + 120},{y1} C{from.X + 120 + offset},{middle} {to.X + 120 + offset},{middle} {to.X + 120},{y2}";
+        }
+        var right = to.X > from.X;
+        var x1 = from.X + (right ? 240 : 0); var x2 = to.X + (right ? 0 : 240);
+        var midX = (x1 + x2) / 2;
+        return $"M{x1},{from.Y + 34} C{midX},{from.Y + 34 + offset} {midX},{to.Y + 34 + offset} {x2},{to.Y + 34}";
+    }
+    private string Name(string id) => nodeIndex.GetValueOrDefault(id)?.Type.Name ?? id;
+    private static string Short(string value, int length) => value.Length <= length ? value : value[..(length - 1)] + "…";
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        try
+        {
+            if (initialise)
+            {
+                initialise = false;
+                await JS.InvokeVoidAsync("CoverScopeReview.graph.attach", canvas);
+                attached = true;
+            }
+            if (inspectPending)
+            {
+                inspectPending = false;
+                var node = selectedEdge is null ? FocusNode : null;
+                await JS.InvokeVoidAsync("CoverScopeReview.graph.inspect", canvas, inspector, node?.X, node?.Y);
+            }
+        }
+        catch (JSDisconnectedException) { }
+    }
+    private async Task CenterSelection()
+    {
+        if (FocusNode is not { } node) { return; }
+        try { await JS.InvokeVoidAsync("CoverScopeReview.graph.center", canvas, node.X + 120, node.Y + 34); } catch (JSDisconnectedException) { }
+    }
+    private async Task Transform(string action)
+    { try { await JS.InvokeVoidAsync("CoverScopeReview.graph.transform", canvas, action); } catch (JSDisconnectedException) { } }
+    public async ValueTask DisposeAsync()
+    {
+        selectionVersion++;
+        if (!attached) { return; }
+        try { await JS.InvokeVoidAsync("CoverScopeReview.graph.detach", canvas); } catch (JSDisconnectedException) { }
+    }
+}

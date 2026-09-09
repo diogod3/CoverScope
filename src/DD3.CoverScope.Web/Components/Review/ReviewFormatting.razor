@@ -1,0 +1,69 @@
+@using DD3.CoverScope.Models.Reviews
+<section class="work-panel formatting-panel">
+    <header class="panel-header">
+        <h2>Formatting · @Evidence.Formatting.Status</h2>
+        <p>@Evidence.Formatting.Message</p>
+        <div class="explorer-controls">
+            <label>Code range<select @bind="range" @bind:after="ClearExpansion"><option>All files</option><option>Changed files</option><option disabled="@(!Evidence.SourceMatches)">Changed lines</option></select></label>
+            <label class="check"><input type="checkbox" @bind="includeLineEndings" @bind:after="ClearExpansion" />Include line endings</label>
+        </div>
+        <p class="muted">@Visible.Count findings shown of @Scoped.Count in this range · @Scoped.Count(x => x.Id == "ENDOFLINE") line-ending findings@(includeLineEndings ? " included" : " hidden"). @Evidence.FormattingFindings.Count findings in the full report.</p>
+        <p class="muted">Changed ranges locate findings on the reviewed branch; they do not establish when an issue was introduced.</p>
+    </header>
+    <div class="panel-scroll panel-padding">
+        @foreach (var rule in Visible.GroupBy(x => x.Id).OrderBy(x => x.Key, StringComparer.Ordinal))
+        {
+            <div class="format-rule">
+                <button class="format-group-toggle" aria-expanded="@expandedRules.Contains(rule.Key)" @onclick="() => ToggleRule(rule.Key)">
+                    <span>@(expandedRules.Contains(rule.Key) ? "▾" : "▸") @rule.Key</span><small>@rule.Count() findings · @rule.Select(x => x.Path).Distinct().Count() files</small>
+                </button>
+                @if (expandedRules.Contains(rule.Key))
+                {
+                    @foreach (var file in rule.GroupBy(x => x.Path).OrderBy(x => x.Key, StringComparer.Ordinal))
+                    {
+                        var key = (rule.Key, file.Key);
+                        <div class="format-file">
+                            <button class="format-group-toggle" title="@file.Key" aria-expanded="@expandedFiles.Contains(key)" @onclick="() => ToggleFile(key)"><span class="ellipsis">@(expandedFiles.Contains(key) ? "▾" : "▸") @file.Key</span><small>@file.Count()</small></button>
+                            @if (expandedFiles.Contains(key))
+                            {
+                                @foreach (var finding in file.OrderBy(x => x.Line).ThenBy(x => x.Column))
+                                { <div class="list-row"><div><button class="text-button" @onclick="() => OnFile.InvokeAsync(finding.Path)">Line @finding.Line:@finding.Column</button><p>@finding.Message</p></div></div> }
+                            }
+                        </div>
+                    }
+                }
+            </div>
+        }
+        @if (Visible.Count == 0) { <p class="workspace-empty">No recorded findings match these filters.</p> }
+        <details class="format-output"><summary>Configuration candidates · @Evidence.FormattingConfiguration.Count</summary>
+            <p class="muted">Discovered .editorconfig paths are candidates, not a record of effective rule precedence. New runs inspect ancestors of the target and files with findings.</p>
+            @foreach (var config in Evidence.FormattingConfiguration) { <p class="muted">@config</p> }
+        </details>
+        <details class="format-output"><summary>Formatter output and commands</summary><pre>@string.Join("\n", Evidence.Formatting.Commands)
+@Evidence.Formatting.Output</pre></details>
+    </div>
+</section>
+@code {
+    [Parameter, EditorRequired] public ReviewEvidence Evidence { get; set; } = default!;
+    [Parameter] public EventCallback<string> OnFile { get; set; }
+    private string range = "Changed files";
+    private bool includeLineEndings;
+    private readonly HashSet<string> expandedRules = [];
+    private readonly HashSet<(string Rule, string Path)> expandedFiles = [];
+    private Dictionary<string, HashSet<int>> changed = [];
+    private ReviewEvidence? previousEvidence;
+    private List<FormattingFinding> Scoped => Evidence.FormattingFindings.Where(x => range == "All files"
+        || changed.TryGetValue(x.Path, out var lines) && (range == "Changed files" || lines.Contains(x.Line))).ToList();
+    private List<FormattingFinding> Visible => Scoped.Where(x => includeLineEndings || x.Id != "ENDOFLINE").ToList();
+    protected override void OnParametersSet()
+    {
+        if (ReferenceEquals(previousEvidence, Evidence)) { return; }
+        previousEvidence = Evidence;
+        if (!Evidence.SourceMatches && range == "Changed lines") { range = "Changed files"; }
+        changed = Evidence.Files.Where(x => x.Kind != ChangeKind.Deleted).ToDictionary(x => x.Path, x => x.AddedLines.ToHashSet(), StringComparer.Ordinal);
+        ClearExpansion();
+    }
+    private void ClearExpansion() { expandedRules.Clear(); expandedFiles.Clear(); }
+    private void ToggleRule(string id) { if (!expandedRules.Add(id)) { expandedRules.Remove(id); } }
+    private void ToggleFile((string Rule, string Path) key) { if (!expandedFiles.Add(key)) { expandedFiles.Remove(key); } }
+}

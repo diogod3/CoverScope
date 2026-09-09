@@ -1,0 +1,150 @@
+@using DD3.CoverScope.Models.Reviews
+@using DD3.CoverScope.Services.Reviews
+@inject IJSRuntime JS
+<section class="work-panel source-work-panel">
+    <header class="panel-header">
+        <div class="title-row"><div class="shrink"><h2 class="ellipsis" title="@Path">@(Path is null ? "Source explorer" : System.IO.Path.GetFileName(Path))</h2><p class="muted ellipsis" title="@Path">@Path</p></div>
+            <div class="source-views" aria-label="Source revision" hidden="@ChangedLinesOnly">
+                @foreach (var value in new[] { "Head", "Baseline", "Diff" })
+                { <button aria-pressed="@(revision == value)" @onclick="() => ChangeRevision(value)">@(value == "Head" ? "Reviewed" : value)</button> }
+            </div>
+        </div>
+        @if (Path is not null)
+        {
+            <div class="source-tools"><span class="muted">@(revision == "Diff" ? "Common ancestor → reviewed commit" : revision + " · captured source")</span>
+                @if (revision == "Head" && fileCoverage is not null && Evidence.SourceMatches)
+                { <span class="coverage-pill">@ReviewPresentation.Metric(fileCoverage.CoveredLines.Count, fileCoverage.ExecutableLines.Count) lines</span> }
+                @if (revision != "Diff")
+                { <label class="line-jump">Line <input type="number" min="1" max="@sourceLineCount" @bind="jumpLine" /></label><button @onclick="Jump" disabled="@(rows.Count == 0)">Go</button> }
+                @if (ChangedLinesOnly) { <span class="muted">Changed executable lines + context · original line numbers</span> }
+            </div>
+        }
+    </header>
+    <div class="panel-scroll source-scroll" @ref="scroller" tabindex="0" aria-label="Source code">
+        @if (Path is null) { <div class="workspace-empty"><span>{ }</span><h3>Choose a file, type or member</h3><p>Inspect the source captured for this review.</p></div> }
+        else if (source is null) { <div class="workspace-empty"><h3>Source unavailable</h3><p>@(revision == "Diff" ? "No recorded diff for this file." : "This revision was not captured in this run. Generated output and files absent from that revision may have no saved source.")</p></div> }
+        else if (revision == "Diff" && rows.Count == 0) { <div class="workspace-empty"><h3>No text diff to display</h3><p>This file has no recorded text changes to show.</p></div> }
+        else
+        {
+            <div class="source-lines">
+                @foreach (var row in rows)
+                {
+                    var detail = details.GetValueOrDefault(row.Number);
+                    var state = CoverageState(row.Number);
+                    <div class="source-row change-@row.Change @(row.Number > 0 && row.Number == targetLine ? "target-line" : null)" data-source-line="@(row.Number > 0 ? row.Number : (int?)null)">
+                        <span class="source-coverage @state" title="@CoverageDescription(row, state)" aria-label="@CoverageDescription(row, state)">@(state == "covered" ? "●" : state == "uncovered" ? "○" : state == "partial" ? "◐" : row.Change == "removed" ? "—" : "")</span>
+                        <span class="source-hits" title="Maximum reported hits on this line">@(state.Length > 0 ? detail?.Hits.ToString() : "")</span>
+                        @if (revision == "Diff") { <span class="source-number source-before" title="Baseline line">@row.BeforeNumber</span> }
+                        <span class="source-number" title="@(revision == "Baseline" ? "Baseline line" : "Reviewed line")">@(row.Number > 0 ? row.Number.ToString() : "")</span><div class="source-code-zone"><span class="source-change" aria-label="@row.Change">@(row.Change == "added" ? "+" : row.Change == "removed" ? "−" : "")</span><code>@row.Text</code>
+                        @if (state.Length > 0 && detail?.BranchesTotal is > 0)
+                        { <span class="branch-indicator" title="Covered / recorded branches on this line">@detail.BranchesCovered/@detail.BranchesTotal branches</span> }
+                        </div>
+                    </div>
+                }
+            </div>
+        }
+    </div>
+    <footer class="panel-footer">
+        @if (revision is "Head" or "Diff")
+        {
+            <span>Background: <i class="legend-dot covered"></i> Added <i class="legend-dot uncovered"></i> Removed</span>
+            <span>Coverage gutter: ● Covered · ○ Uncovered · ◐ Partial branches</span>
+        }
+        <span class="muted">@(revision == "Baseline" ? "Coverage applies to the reviewed commit only." : !Evidence.SourceMatches ? "Coverage overlay disabled: source consistency was not established." : fileCoverage is null ? "No mapped coverage; an empty gutter does not mean uncovered." : fileCoverage.Lines is null ? "This run has line states only; hit counts and branch details were not recorded." : "Hover over the coverage gutter for hits and branches.")</span>
+        @if (revision == "Diff") { <span class="muted">Line numbers: baseline / reviewed. Removed lines: coverage not applicable.</span> }
+    </footer>
+</section>
+@code {
+    [Parameter, EditorRequired] public ReviewEvidence Evidence { get; set; } = default!;
+    [Parameter] public string? Path { get; set; }
+    [Parameter] public int? InitialLine { get; set; }
+    [Parameter] public string InitialRevision { get; set; } = "Head";
+    [Parameter] public CoverageEvidence? Coverage { get; set; }
+    [Parameter] public bool ChangedLinesOnly { get; set; }
+    private string revision = "Head";
+    private string? previousPath, previousRevision, source;
+    private ReviewEvidence? previousEvidence;
+    private CoverageEvidence? previousCoverage;
+    private int? previousLine, targetLine;
+    private int jumpLine = 1;
+    private int sourceLineCount;
+    private bool previousChangedLinesOnly;
+    private bool scrollPending;
+    private ElementReference scroller;
+    private CoverageFileEvidence? fileCoverage;
+    private List<ReviewDiffPresentation.Line> rows = [];
+    private Dictionary<int, CoverageLineEvidence> details = [];
+    private HashSet<int> covered = [], executable = [];
+    protected override void OnParametersSet()
+    {
+        if (previousPath == Path && previousRevision == InitialRevision && previousLine == InitialLine && previousChangedLinesOnly == ChangedLinesOnly && ReferenceEquals(previousEvidence, Evidence) && ReferenceEquals(previousCoverage, Coverage)) { return; }
+        revision = ChangedLinesOnly ? "Head" : InitialRevision;
+        previousChangedLinesOnly = ChangedLinesOnly;
+        previousPath = Path; previousRevision = InitialRevision; previousLine = InitialLine; previousEvidence = Evidence; previousCoverage = Coverage;
+        jumpLine = InitialLine ?? 1; targetLine = InitialLine;
+        Load();
+    }
+    private void Load()
+    {
+        var coverage = Coverage ?? Evidence.Coverage;
+        fileCoverage = coverage.Available ? coverage.Files.FirstOrDefault(x => x.Path == Path) : null;
+        details = fileCoverage?.Lines?.ToDictionary(x => x.Number) ?? [];
+        covered = fileCoverage?.CoveredLines.ToHashSet() ?? [];
+        executable = fileCoverage?.ExecutableLines.ToHashSet() ?? [];
+        source = Path is null ? null : revision == "Diff" ? Evidence.Files.FirstOrDefault(x => x.Path == Path)?.Diff : ReviewPresentation.Source(Evidence, Path, revision, coverage);
+        var lines = source?.Replace("\r\n", "\n", StringComparison.Ordinal).Split('\n') ?? [];
+        sourceLineCount = lines.Length;
+        var added = Evidence.Files.FirstOrDefault(x => x.Path == Path)?.AddedLines.ToHashSet() ?? [];
+        rows = revision == "Diff" ? ReviewDiffPresentation.Parse(source ?? "")
+            : lines.Select((text, i) => new ReviewDiffPresentation.Line(i + 1, null, text, revision == "Head" && added.Contains(i + 1) ? "added" : "")).ToList();
+        if (ChangedLinesOnly)
+        {
+            var visible = new HashSet<int>();
+            foreach (var line in executable)
+            { for (var number = Math.Max(1, line - 3); number <= Math.Min(lines.Length, line + 3); number++) { visible.Add(number); } }
+            rows = [];
+            var previous = 0;
+            foreach (var number in visible.Order())
+            {
+                if (number > previous + 1) { rows.Add(new(0, null, "⋯", "separator")); }
+                rows.Add(new(number, null, lines[number - 1], added.Contains(number) ? "added" : ""));
+                previous = number;
+            }
+            if (previous < lines.Length) { rows.Add(new(0, null, "⋯", "separator")); }
+        }
+        scrollPending = true;
+    }
+    private void ChangeRevision(string value) { revision = value; jumpLine = 1; targetLine = null; Load(); }
+    private void Jump()
+    {
+        jumpLine = Math.Clamp(jumpLine, 1, Math.Max(1, sourceLineCount));
+        if (ChangedLinesOnly) { jumpLine = rows.Where(x => x.Number > 0).OrderBy(x => Math.Abs(x.Number - jumpLine)).Select(x => x.Number).FirstOrDefault(jumpLine); }
+        targetLine = jumpLine; scrollPending = true;
+    }
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (!scrollPending) { return; }
+        scrollPending = false;
+        try { await JS.InvokeVoidAsync("CoverScopeReview.scrollSource", scroller, jumpLine); }
+        catch (JSDisconnectedException) { }
+    }
+    private string CoverageState(int number)
+    {
+        if (revision == "Baseline" || number <= 0 || !Evidence.SourceMatches || !executable.Contains(number)) { return ""; }
+        var detail = details.GetValueOrDefault(number);
+        return !covered.Contains(number) ? "uncovered" : detail?.BranchesTotal is > 0 && detail.BranchesCovered < detail.BranchesTotal ? "partial" : "covered";
+    }
+    private string CoverageDescription(ReviewDiffPresentation.Line row, string state)
+    {
+        if (row.Change == "removed") { return "Coverage not applicable: removed line."; }
+        if (row.Number == 0) { return "Separate changed sections"; }
+        if (revision == "Baseline") { return "Coverage applies to the reviewed commit only."; }
+        if (!Evidence.SourceMatches) { return "Coverage unavailable: source consistency was not established."; }
+        if (state.Length == 0) { return "No executable coverage recorded for this line."; }
+        var detail = details.GetValueOrDefault(row.Number);
+        var label = state == "partial" ? "Covered line; partially covered branches" : state == "covered" ? "Covered" : "Uncovered";
+        return detail is null ? label + "; hit and branch details were not recorded."
+            : $"{label} · {detail.Hits} hits" + (detail.BranchesTotal > 0 ? $" · {detail.BranchesCovered}/{detail.BranchesTotal} branches" : "");
+    }
+
+}

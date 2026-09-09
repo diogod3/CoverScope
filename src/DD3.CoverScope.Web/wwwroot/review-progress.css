@@ -1,0 +1,157 @@
+.collection-progress {
+    min-height: calc(100dvh - 240px);
+    display: grid;
+    grid-template-columns: minmax(180px, 280px) minmax(260px, 430px);
+    place-content: center;
+    align-items: center;
+    gap: clamp(34px, 6vw, 88px);
+    padding: 48px 20px;
+}
+
+.collection-progress-visual {
+    position: relative;
+    width: clamp(180px, 21vw, 260px);
+    aspect-ratio: 1;
+    display: grid;
+    place-items: center;
+}
+
+.collection-progress-halo {
+    position: absolute;
+    inset: 2%;
+    border: 1px solid rgba(141, 131, 255, .18);
+    border-radius: 50%;
+    background:
+        radial-gradient(circle, rgba(150, 0, 231, .13), transparent 56%),
+        conic-gradient(from 180deg, transparent, rgba(47, 28, 216, .16), transparent 38%);
+    box-shadow: 0 0 90px rgba(150, 0, 231, .11);
+    animation: collection-halo 4.8s ease-in-out infinite;
+}
+
+.collection-progress-mark {
+    position: relative;
+    width: 58%;
+    overflow: visible;
+    filter: drop-shadow(0 0 22px rgba(150, 0, 231, .3));
+}
+
+.collection-progress-ring {
+    transform-origin: 32px 32px;
+    animation: collection-ring 10s linear infinite;
+}
+
+.collection-progress-ring-primary { fill: var(--cs-brand-violet); }
+.collection-progress-ring-segment { fill: var(--cs-brand-blue); }
+.collection-progress-bar { fill: var(--cs-text); transform-box: fill-box; transform-origin: center bottom; animation: collection-bar 1.8s ease-in-out infinite; }
+.collection-progress-bar.bar-two { animation-delay: .18s; }
+.collection-progress-bar.bar-three { animation-delay: .36s; }
+
+.collection-progress-copy { min-width: 0; }
+.collection-progress-copy h1 {
+    margin: 10px 0 8px;
+    color: var(--cs-text);
+    font-size: clamp(2rem, 4vw, 3.5rem);
+    line-height: .98;
+    letter-spacing: -.055em;
+}
+
+.collection-progress-target {
+    overflow: hidden;
+    margin: 0 0 28px;
+    color: var(--cs-text-muted);
+    font: .72rem/1.5 Consolas, monospace;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.collection-progress-phase {
+    min-height: 34px;
+    display: flex;
+    align-items: center;
+    gap: 11px;
+    margin: 0;
+    color: var(--cs-text-secondary);
+    font-size: .9rem;
+    font-weight: 700;
+}
+
+.collection-progress-pulse {
+    width: 9px;
+    height: 9px;
+    flex: 0 0 9px;
+    border-radius: 50%;
+    background: var(--cs-brand-blue-readable);
+    box-shadow: 0 0 0 0 rgba(141, 131, 255, .38);
+    animation: collection-pulse 1.7s ease-out infinite;
+}
+
+.collection-progress-elapsed {
+    margin: 5px 0 0 20px;
+    color: var(--cs-text-subtle);
+    font: .66rem/1.4 Consolas, monospace;
+}
+
+.visually-hidden {
+    position: absolute !important;
+    width: 1px !important;
+    height: 1px !important;
+    overflow: hidden !important;
+    clip: rect(0, 0, 0, 0) !important;
+    white-space: nowrap !important;
+    clip-path: inset(50%) !important;
+}
+
+@keyframes collection-ring {
+    to { transform: rotate(360deg); }
+}
+
+@keyframes collection-bar {
+    0%, 100% { transform: scaleY(.72); opacity: .68; }
+    50% { transform: scaleY(1); opacity: 1; }
+}
+
+@keyframes collection-halo {
+    0%, 100% { opacity: .58; transform: scale(.96); }
+    50% { opacity: 1; transform: scale(1.02); }
+}
+
+@keyframes collection-pulse {
+    0% { box-shadow: 0 0 0 0 rgba(141, 131, 255, .38); }
+    70%, 100% { box-shadow: 0 0 0 9px rgba(141, 131, 255, 0); }
+}
+
+@media (max-width: 760px) {
+    .collection-progress {
+        min-height: calc(100dvh - 240px);
+        grid-template-columns: 1fr;
+        gap: 24px;
+        padding: 34px 10px 48px;
+        text-align: center;
+    }
+
+    .collection-progress-visual { width: 170px; justify-self: center; }
+    .collection-progress-phase { justify-content: center; }
+    .collection-progress-elapsed { margin-left: 0; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .collection-progress-halo,
+    .collection-progress-ring,
+    .collection-progress-bar,
+    .collection-progress-pulse {
+        animation: none;
+    }
+
+    .collection-progress-halo { opacity: .76; transform: none; }
+    .collection-progress-bar { opacity: 1; transform: none; }
+}
+
+.collection-progress-actions { margin: 26px 0 12px; }
+.collection-progress-hint { max-width: 390px; color: var(--cs-text-muted); font-size: 12px; line-height: 1.7; }
+.collection-progress-stopped .collection-progress-halo,
+.collection-progress-stopped .collection-progress-ring,
+.collection-progress-stopped .collection-progress-bar,
+.collection-progress-stopped .collection-progress-pulse { animation: none; }
+@media (max-width: 760px) {
+    .collection-progress-hint { margin-inline: auto; }
+}

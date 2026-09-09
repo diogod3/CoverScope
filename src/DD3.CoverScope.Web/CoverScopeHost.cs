@@ -1,6 +1,8 @@
 using System.Diagnostics;
 using DD3.CoverScope.Components;
 using DD3.CoverScope.Services;
+using DD3.CoverScope.Brokers;
+using DD3.CoverScope.Services.Reviews;
 using Microsoft.AspNetCore.Hosting.Server;
 using Microsoft.AspNetCore.Hosting.Server.Features;
 
@@ -66,19 +68,16 @@ internal static class CoverScopeHost
             .AddRazorComponents()
             .AddInteractiveServerComponents();
         builder.Services.AddSingleton(new CoverScopeLaunchContext(options.InvocationDirectory, options.TargetPath));
-        builder.Services.AddSingleton<StartupCoverageCoordinator>();
         builder.Services.AddSingleton(new SolutionFileBrowser(options.InvocationDirectory));
-        builder.Services.AddSingleton<CoberturaParser>();
-        builder.Services.AddSingleton<CoberturaReportMerger>();
-        builder.Services.AddSingleton<CoverletRunSettingsWriter>();
-        builder.Services.AddSingleton<CoverageSettingsStore>();
-        builder.Services.AddSingleton<TrxTestResultParser>();
-        builder.Services.AddSingleton(TimeProvider.System);
-        builder.Services.AddSingleton<CoverageRunIdGenerator>();
-        builder.Services.AddSingleton<CoverageRunStore>();
-        builder.Services.AddSingleton<CoverageRunner>();
-        builder.Services.AddSingleton<CoverageMetricsBuilder>();
-        builder.Services.AddScoped<CoverageWorkspaceProjectionCache>();
+        builder.Services.AddSingleton<IFileSystemBroker, FileSystemBroker>();
+        builder.Services.AddSingleton<IProcessBroker, ProcessBroker>();
+        builder.Services.AddSingleton<GitComparisonService>();
+        builder.Services.AddSingleton<ReviewStore>();
+        builder.Services.AddSingleton<ReportReader>();
+        builder.Services.AddSingleton<VerificationService>();
+        builder.Services.AddSingleton<CodeComparisonService>();
+        builder.Services.AddSingleton<ReviewOrchestrationService>();
+        builder.Services.AddSingleton<ReviewExportService>();
 
         await using var app = builder.Build();
 

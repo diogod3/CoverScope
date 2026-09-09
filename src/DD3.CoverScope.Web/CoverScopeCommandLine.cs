@@ -20,7 +20,7 @@ internal sealed record CoverScopeCommandLineResult(
 internal static class CoverScopeCommandLine
 {
     public const string HelpText = """
-        CoverScope - local .NET code coverage explorer
+        CoverScope - local .NET committed change review
 
         Usage:
           coverscope [solution-or-project] [options]

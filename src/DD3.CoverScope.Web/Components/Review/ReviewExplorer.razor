@@ -1,0 +1,153 @@
+@using DD3.CoverScope.Models.Reviews
+@using DD3.CoverScope.Services.Reviews
+<div class="explorer-workspace">
+    <section class="work-panel hierarchy-panel">
+        <header class="panel-header">
+            <h2>@(CoverageMode ? "Coverage explorer" : "Change explorer")</h2>
+            <input aria-label="Search source hierarchy" placeholder="Find file, namespace, type, member…" @bind="search" @bind:event="oninput" />
+            <div class="explorer-controls"><label>Group<select @bind="grouping"><option>Files</option><option>Types</option><option>Tests</option></select></label>
+                @if (CoverageMode)
+                { <label>Show<select @bind="coverageFilter"><option>All coverage</option><option>With gaps</option><option>Uncovered</option></select></label> }
+                else { <label class="check"><input type="checkbox" @bind="changedOnly" />Changed only</label> }
+            </div>
+            @if (CoverageMode)
+            { <div class="explorer-controls"><label>Source scope<select @bind="sourceScope"><option>All sources</option><option>C#</option><option>Razor</option><option>Generated / build output</option><option>Other sources</option></select></label><label>Sort<select @bind="sort"><option>Name</option><option>Lowest coverage</option><option>Most missed lines</option></select></label></div> }
+            <p class="muted">@(grouping == "Files" ? "Project / folder / file" : "Project / namespace / logical type / member")</p>
+        </header>
+        <div class="panel-scroll hierarchy-scroll">
+            @if (grouping == "Files")
+            {
+                @foreach (var project in VisiblePaths.GroupBy(path => ReviewPresentation.Project(Evidence, path)))
+                {
+                    <details class="tree-project" open><summary title="@project.Key"><span class="node-icon">P</span><span class="ellipsis">@ProjectName(project.Key)</span><small>@project.Count()</small></summary>
+                    @foreach (var folder in project.GroupBy(path => System.IO.Path.GetDirectoryName(path)?.Replace('\\', '/') ?? ""))
+                    {
+                        <details class="tree-folder" open><summary title="@folder.Key"><span class="node-icon">D</span><span class="ellipsis">@(folder.Key.Length == 0 ? "Root" : folder.Key)</span></summary>
+                        @foreach (var path in folder)
+                        {
+                            <button class="tree-item @(selectedPath == path ? "selected" : null)" @onclick="() => SelectFile(path)" title="@path">
+                                <span class="node-icon">F</span><span class="node-label"><span class="ellipsis">@System.IO.Path.GetFileName(path)</span><small>@FileStatus(path)</small></span>
+                                @if (CoverageMode) { <span class="coverage-pill">@FileMetric(path)</span> }
+                            </button>
+                        }
+                        </details>
+                    }
+                    </details>
+                }
+                @if (!VisiblePaths.Any()) { <p class="workspace-empty">No files match these filters.</p> }
+            }
+            else
+            {
+                @foreach (var project in VisibleTypes.GroupBy(x => x.Project))
+                {
+                    <details class="tree-project" open><summary title="@project.Key"><span class="node-icon">P</span><span class="ellipsis">@ProjectName(project.Key)</span></summary>
+                    @foreach (var ns in project.GroupBy(x => ReviewPresentation.Namespace(Evidence, x)))
+                    {
+                        <details class="tree-folder" open><summary title="@ns.Key"><span class="node-icon">N</span><span class="ellipsis">@ns.Key</span></summary>
+                        @foreach (var type in ns)
+                        {
+                            <details class="tree-type" open="@(selectedType?.Id == type.Id || search.Length > 0)">
+                                <summary title="@type.FullName"><span class="node-icon">T</span><button class="text-button ellipsis" @onclick="() => SelectType(type)" @onclick:stopPropagation="true">@type.Name</button><small>@type.Change</small></summary>
+                                @foreach (var member in type.Members.Where(MemberVisible))
+                                { <button class="tree-item member-item" title="@(member.Name + " · " + member.Path + ":" + member.Line)" @onclick="() => SelectMember(type, member)"><span class="node-icon">M</span><span class="node-label"><span class="ellipsis">@member.Name</span><small>@member.Kind · @member.Change</small></span></button> }
+                            </details>
+                        }
+                        </details>
+                    }
+                    </details>
+                }
+                @if (!VisibleTypes.Any()) { <p class="workspace-empty">No indexed types match. Razor and generated declarations are available through Files only.</p> }
+            }
+        </div>
+        <footer class="panel-footer">@(Evidence.Code.Complete ? "C# declaration index available" : "Partial index — file evidence remains available")</footer>
+    </section>
+    <div class="explorer-content">
+        @if (selectedType is not null)
+        {
+            <div class="selection-strip"><div class="shrink"><strong class="ellipsis" title="@selectedType.FullName">@selectedType.FullName</strong><small>@selectedType.Kind · @selectedType.Change</small></div>
+                <button @onclick="() => OnType.InvokeAsync(selectedType)">Type details</button>
+                @if (selectedType.Files.Count > 1)
+                { <select aria-label="Partial type source file" value="@selectedPath" @onchange="e => SelectPartialFile(e.Value?.ToString())">@foreach (var file in selectedType.Files.Where(path => !CoverageMode || MatchesPath(path, false))) { <option>@file</option> }</select> }
+            </div>
+        }
+        <ReviewSource Evidence="Evidence" Path="@selectedPath" InitialLine="selectedLine" InitialRevision="@selectedRevision" Coverage="EffectiveCoverage" ChangedLinesOnly="ChangedLinesOnly" />
+    </div>
+</div>
+@code {
+    [Parameter, EditorRequired] public ReviewEvidence Evidence { get; set; } = default!;
+    [Parameter] public string? InitialFile { get; set; }
+    [Parameter] public bool CoverageMode { get; set; }
+    [Parameter] public bool ChangedLinesOnly { get; set; }
+    [Parameter] public CoverageEvidence? Coverage { get; set; }
+    [Parameter] public EventCallback<TypeEvidence> OnType { get; set; }
+    private CoverageEvidence EffectiveCoverage => Coverage ?? Evidence.Coverage;
+    private string search = "", grouping = "Files", coverageFilter = "All coverage", sourceScope = "All sources", sort = "Name", selectedRevision = "Head";
+    private bool changedOnly = true;
+    private string? selectedPath, previousFile;
+    private int? selectedLine;
+    private TypeEvidence? selectedType;
+    private ReviewEvidence? previousEvidence;
+    private CoverageEvidence? previousCoverage;
+    private IEnumerable<string> Paths => CoverageMode ? EffectiveCoverage.Files.Select(x => x.Path)
+        : Evidence.Files.Select(x => x.Path).Concat(changedOnly ? [] : Evidence.Code.Documents.Select(x => x.Path)).Distinct(StringComparer.Ordinal);
+    private IEnumerable<string> VisiblePaths
+    {
+        get
+        {
+            var paths = Paths.Where(MatchesPath);
+            return sort == "Lowest coverage" ? paths.OrderBy(path => { var f = FindCoverage(path); return f is null || f.ExecutableLines.Count == 0 ? 1 : (double)f.CoveredLines.Count / f.ExecutableLines.Count; }).ThenBy(x => x, StringComparer.Ordinal)
+                : sort == "Most missed lines" ? paths.OrderByDescending(path => { var f = FindCoverage(path); return f is null ? 0 : f.ExecutableLines.Count - f.CoveredLines.Count; }).ThenBy(x => x, StringComparer.Ordinal)
+                : paths.Order(StringComparer.Ordinal);
+        }
+    }
+    private IEnumerable<TypeEvidence> VisibleTypes => Evidence.Code.Types.Where(t =>
+        (!changedOnly || CoverageMode || t.Change != "Unchanged") && (grouping != "Tests" || t.Members.Any(m => m.IsTest && MemberVisible(m)))
+        && (!ChangedLinesOnly || t.Members.Any(MemberVisible))
+        && (!CoverageMode || t.Change != "Deleted" && t.Files.Any(path => MatchesPath(path, false)))
+        && (search.Length == 0 || t.FullName.Contains(search, StringComparison.OrdinalIgnoreCase) || t.Project.Contains(search, StringComparison.OrdinalIgnoreCase)
+            || t.Files.Any(x => x.Contains(search, StringComparison.OrdinalIgnoreCase)) || t.Members.Any(x => x.Name.Contains(search, StringComparison.OrdinalIgnoreCase))))
+        .OrderBy(x => x.FullName, StringComparer.Ordinal);
+    private bool MatchesPath(string path) => MatchesPath(path, true);
+    private bool MatchesPath(string path, bool filterSearch)
+    {
+        if (filterSearch && search.Length > 0 && !path.Contains(search, StringComparison.OrdinalIgnoreCase)) { return false; }
+        if (!CoverageMode) { return true; }
+        var coverage = FindCoverage(path);
+        return coverage is not null && (sourceScope == "All sources" || ReviewPresentation.Scope(path) == sourceScope)
+            && (coverageFilter == "All coverage" || coverage.ExecutableLines.Count > 0 &&
+                (coverageFilter == "Uncovered" ? coverage.CoveredLines.Count == 0 : coverage.CoveredLines.Count < coverage.ExecutableLines.Count));
+    }
+    private CoverageFileEvidence? FindCoverage(string path) => EffectiveCoverage.Files.FirstOrDefault(x => x.Path == path);
+    private bool MemberVisible(MemberEvidence member) => (grouping != "Tests" || member.IsTest)
+        && (!changedOnly || CoverageMode || member.Change != "Unchanged")
+        && (!CoverageMode || member.Change != "Deleted" && MatchesPath(member.Path, false)
+            && (!ChangedLinesOnly || FindCoverage(member.Path)!.ExecutableLines.Any(line => line >= member.Line && line <= member.EndLine)));
+    private string FileMetric(string path) { var f = FindCoverage(path); return f is null ? "Unavailable" : ReviewPresentation.Metric(f.CoveredLines.Count, f.ExecutableLines.Count); }
+    private string FileStatus(string path) => CoverageMode ? ReviewPresentation.Scope(path) : Evidence.Files.FirstOrDefault(x => x.Path == path)?.Kind.ToString() ?? "Unchanged";
+    private static string ProjectName(string path) => System.IO.Path.GetFileNameWithoutExtension(path);
+    protected override void OnParametersSet()
+    {
+        if (ReferenceEquals(previousEvidence, Evidence) && ReferenceEquals(previousCoverage, Coverage) && previousFile == InitialFile) { return; }
+        previousEvidence = Evidence; previousCoverage = Coverage; previousFile = InitialFile;
+        var initial = InitialFile ?? Paths.FirstOrDefault();
+        if (initial is not null) { SelectFile(initial); } else { selectedPath = null; selectedType = null; selectedLine = null; }
+    }
+    private void SelectFile(string path)
+    {
+        selectedPath = path; selectedLine = null; selectedType = null;
+        var change = Evidence.Files.FirstOrDefault(x => x.Path == path);
+        selectedRevision = !CoverageMode && change is not null ? "Diff"
+            : change?.Kind == ChangeKind.Deleted ? "Baseline" : "Head";
+    }
+    private void SelectType(TypeEvidence type)
+    {
+        selectedType = type;
+        var member = CoverageMode ? type.Members.FirstOrDefault(MemberVisible)
+            : type.Members.FirstOrDefault(x => x.Change != "Deleted") ?? type.Members.FirstOrDefault();
+        selectedPath = member?.Path ?? type.Files.FirstOrDefault(path => !CoverageMode || MatchesPath(path, false)); selectedLine = member?.Line;
+        selectedRevision = type.Change == "Deleted" ? "Baseline" : "Head";
+    }
+    private void SelectMember(TypeEvidence type, MemberEvidence member)
+    { selectedType = type; selectedPath = member.Path; selectedLine = member.Line; selectedRevision = member.Change == "Deleted" ? "Baseline" : "Head"; }
+    private void SelectPartialFile(string? path) { if (path is not null) { selectedPath = path; selectedLine = null; } }
+}

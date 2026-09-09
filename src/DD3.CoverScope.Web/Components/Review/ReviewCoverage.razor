@@ -1,0 +1,59 @@
+@using DD3.CoverScope.Models.Reviews
+@using DD3.CoverScope.Services.Reviews
+<div class="coverage-workspace">
+    <section class="work-panel coverage-summary">
+        <header class="panel-header">
+            <div class="title-row"><h2>Coverage</h2>
+                @if (Evidence.Coverage.Scopes.Count > 0)
+                { <label class="scope-select">Collection scope<select @bind="scopeIndex" @bind:after="UpdateCoverage">@if (Evidence.Coverage.Available) { <option value="-1">Combined coverage</option> }@for (var i = 0; i < Evidence.Coverage.Scopes.Count; i++) { <option value="@i">Collection @(i + 1) · @Evidence.Coverage.Scopes[i].Name</option> }</select></label> }
+                <label class="scope-select">Code range<select @bind="range" @bind:after="UpdateCoverage"><option>All code</option><option disabled="@(!Evidence.SourceMatches)">Changed files</option><option disabled="@(!Evidence.SourceMatches)">Changed lines</option></select></label>
+            </div>
+            @if (Evidence.Coverage.Limitation is not null) { <p class="muted">@Evidence.Coverage.Limitation</p> }
+            @if (Current.Aggregation is not null) { <details><summary>How reports were combined</summary><p class="muted">@Current.Aggregation</p></details> }
+            <p class="muted">@RangeDescription</p>
+            <p class="muted">Totals follow the code range. Explorer search and display filters narrow the list only.</p>
+            @if (!Evidence.SourceMatches) { <p class="muted">Branch filters are unavailable because source consistency was not established.</p> }
+            <div class="coverage-metrics">
+                <div><span>Line coverage</span><strong>@ReviewPresentation.Metric(Current.Available ? Current.Files.Sum(x => x.CoveredLines.Count) : null, Current.Available ? Current.Files.Sum(x => x.ExecutableLines.Count) : null)</strong></div>
+                <div><span>Missed lines</span><strong>@(Current.Available ? Current.Files.Sum(x => x.ExecutableLines.Count - x.CoveredLines.Count).ToString() : "Unavailable")</strong></div>
+                <div><span>Branch coverage</span><strong>@ReviewPresentation.Metric(Current.BranchesCovered, Current.BranchesTotal)</strong></div>
+                <div><span>Methods reached</span><strong>@ReviewPresentation.Metric(Current.MethodsCovered, Current.MethodsTotal)</strong></div>
+            </div>
+            <details class="coverage-scope-details"><summary>What is included? @range · @Current.Files.Count reported files</summary>
+                <div class="panel-scroll scope-table"><table><thead><tr><th>Source scope</th><th>Files</th><th>Covered / executable lines</th><th>Branches</th><th>Methods</th></tr></thead><tbody>
+                    @foreach (var group in Current.Files.GroupBy(x => ReviewPresentation.Scope(x.Path)))
+                    { <tr><td>@group.Key</td><td>@group.Count()</td><td>@ReviewPresentation.Metric(group.Sum(x => x.CoveredLines.Count), group.Sum(x => x.ExecutableLines.Count))</td><td>@(group.All(x => x.BranchesTotal is not null) ? ReviewPresentation.Metric(group.Sum(x => x.BranchesCovered), group.Sum(x => x.BranchesTotal)) : "Not recorded")</td><td>@(group.All(x => x.MethodsTotal is not null) ? ReviewPresentation.Metric(group.Sum(x => x.MethodsCovered), group.Sum(x => x.MethodsTotal)) : "Not recorded")</td></tr> }
+                </tbody></table></div>
+                <p class="muted">Scopes describe reported source paths. Generated / build output uses bin or obj paths; other generated files may appear under their source language. Declaration counts cover indexed C# types only. Coverage records execution, not assertions.</p>
+            </details>
+        </header>
+    </section>
+    @if (Current.Available)
+    { <ReviewExplorer @key="Current" Evidence="Evidence" CoverageMode="true" Coverage="Current" ChangedLinesOnly="@(range == "Changed lines")" OnType="OnType" /> }
+    else { <section class="work-panel workspace-empty"><h3>No coverage evidence</h3><p>@(Current.Limitation ?? "The collector produced no usable coverage for this run.")</p></section> }
+</div>
+@code {
+    [Parameter, EditorRequired] public ReviewEvidence Evidence { get; set; } = default!;
+    [Parameter] public EventCallback<TypeEvidence> OnType { get; set; }
+    private int scopeIndex;
+    private string range = "Changed files";
+    private ReviewEvidence? previousEvidence;
+    private CoverageEvidence Current = new();
+    private CoverageEvidence Collection => (scopeIndex == -1 && Evidence.Coverage.Available) || Evidence.Coverage.Scopes.Count == 0 ? Evidence.Coverage
+        : Evidence.Coverage.Scopes[Math.Clamp(scopeIndex, 0, Evidence.Coverage.Scopes.Count - 1)].Evidence;
+    private string RangeDescription => range switch
+    {
+        "Changed files" => "Full-file coverage for files changed from the common ancestor to the reviewed commit. Deleted files and files without collector evidence are excluded.",
+        "Changed lines" => "Coverage of added or modified executable lines, with three surrounding source lines for context. Context is not included in totals. Deleted lines are excluded; method totals cannot be attributed to individual changed lines.",
+        _ => "Coverage across reported sources in the selected collection, including generated code."
+    };
+    protected override void OnParametersSet()
+    {
+        if (ReferenceEquals(previousEvidence, Evidence)) { return; }
+        previousEvidence = Evidence;
+        scopeIndex = Evidence.Coverage.Available ? -1 : 0;
+        range = Evidence.SourceMatches ? "Changed files" : "All code";
+        UpdateCoverage();
+    }
+    private void UpdateCoverage() => Current = ReviewPresentation.FilterCoverage(Evidence, Collection, range);
+}

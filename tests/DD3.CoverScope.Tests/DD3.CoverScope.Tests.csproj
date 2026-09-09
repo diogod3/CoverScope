@@ -11,9 +11,19 @@
     <PackageReference Include="xunit" Version="2.9.2" />
     <PackageReference Include="xunit.runner.visualstudio" Version="2.8.2" PrivateAssets="all" />
     <PackageReference Include="coverlet.collector" Version="6.0.2" PrivateAssets="all" />
+    <!-- Apply Locator's runtime exclusion here too; the web project's metadata is private. -->
+    <PackageReference Include="Microsoft.Build.Framework" Version="17.11.48" ExcludeAssets="runtime" PrivateAssets="all" />
   </ItemGroup>
   <ItemGroup>
     <FrameworkReference Include="Microsoft.AspNetCore.App" />
     <ProjectReference Include="..\..\src\DD3.CoverScope.Web\DD3.CoverScope.Web.csproj" />
   </ItemGroup>
+  <Target Name="CopyReviewWorkerRuntimeFiles" AfterTargets="Build">
+    <ItemGroup>
+      <WorkerRuntime Include="../../src/DD3.CoverScope.Web/bin/$(Configuration)/net10.0/DD3.CoverScope.Web.runtimeconfig.json;../../src/DD3.CoverScope.Web/bin/$(Configuration)/net10.0/DD3.CoverScope.Web.deps.json" />
+      <WorkerBuildHost Include="../../src/DD3.CoverScope.Web/bin/$(Configuration)/net10.0/BuildHost-netcore/**/*" />
+    </ItemGroup>
+    <Copy SourceFiles="@(WorkerRuntime)" DestinationFolder="$(OutDir)" />
+    <Copy SourceFiles="@(WorkerBuildHost)" DestinationFiles="@(WorkerBuildHost->'$(OutDir)BuildHost-netcore/%(RecursiveDir)%(Filename)%(Extension)')" />
+  </Target>
 </Project>
