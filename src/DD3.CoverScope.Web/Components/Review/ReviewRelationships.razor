@@ -7,7 +7,17 @@
         <h2>Branch relationships</h2>
         <div class="graph-controls"><label>Go to type<select value="@selectedNode?.Id" @onchange="ChangeFocus">@foreach (var node in nodes.OrderBy(x => x.Type.FullName)) { <option value="@node.Type.Id">@node.Type.FullName · @node.Type.Change</option> }</select></label>
             <label>Relationships<select @bind="revision" @bind:after="ClearEdge"><option value="Comparison">Branch comparison</option><option value="Head">Reviewed</option><option value="Baseline">Baseline</option></select></label></div>
-        <label class="check graph-filter"><input type="checkbox" @bind="changedOnly" @bind:after="ChangeFilter" />Changed objects only</label>
+        <div class="graph-filters">
+            <label class="check graph-filter"><input type="checkbox" @bind="changedOnly" @bind:after="ChangeFilter" />Changed objects only</label>
+            <label class="check graph-filter" title="Types with indexed test definitions; helpers without test definitions remain visible."><input type="checkbox" @bind="showTests" @bind:after="ChangeFilter" />Show tests</label>
+        </div>
+        <div class="graph-search">
+            <label>Find class or interface<input type="search" @bind="search" @bind:event="oninput" @bind:after="Search" @onkeydown="SearchKey" placeholder="Name or namespace" /></label>
+            <button @onclick="() => MoveMatch(-1)" disabled="@(matches.Count == 0)" aria-label="Previous matching type">Previous</button>
+            <button @onclick="() => MoveMatch(1)" disabled="@(matches.Count == 0)" aria-label="Next matching type">Next</button>
+            <button @onclick="ClearSearch" disabled="@(search.Length == 0)">Clear</button>
+            <span role="status" aria-live="polite">@(string.IsNullOrWhiteSpace(search) ? "Search visible types" : activeMatch < 0 ? $"{matches.Count} matches in visible types" : $"Match {activeMatch + 1} of {matches.Count}: {matches[activeMatch].Type.FullName}")</span>
+        </div>
         <div class="graph-toolbar"><button title="Zoom in" aria-label="Zoom in" @onclick='() => Transform("in")'>+</button><button title="Zoom out" aria-label="Zoom out" @onclick='() => Transform("out")'>−</button><button @onclick='() => Transform("fit")'>Fit all</button><button @onclick='() => Transform("reset")'>100%</button><button @onclick="CenterSelection" disabled="@(selectedNode is null)">Center selected</button><button @onclick="ToggleInspector" aria-pressed="@inspectorOpen" disabled="@(selectedNode is null && selectedEdge is null)">Details</button><small>@nodes.Count types · @VisibleEdges.Count() relationships</small></div>
         <p class="muted">@(changedOnly ? "Changed C# types only; unchanged objects are hidden." : "Changed C# types, related objects, and their interface/implementation groups.") Dependencies point to the exact referenced type.</p>
         @if (!Evidence.Code.Complete) { <p class="notice">The code index is incomplete; this graph shows the available evidence.</p> }
@@ -38,15 +48,16 @@
                 }
                 @foreach (var node in nodes)
                 {
-                    <g data-node="true" class="graph-node @(IsTestType(node.Type) ? "test-node" : null) @node.Type.Change.ToLowerInvariant() @(selectedNode?.Id == node.Type.Id ? "selected" : null) @(ConnectedToSelection(node.Type.Id) ? "" : "subdued")" transform="@($"translate({node.X} {node.Y})")" role="button" tabindex="0" aria-label="@(node.Type.FullName + ", " + NodeCaption(node.Type))" @onclick="() => SelectNodeClick(node.Type)" @ondblclick="() => OpenType(node.Type)" @onkeydown="e => SelectNodeKey(e, node.Type)">
+                    <g data-node="true" class="graph-node @(IsTestType(node.Type) ? "test-node" : null) @node.Type.Change.ToLowerInvariant() @(selectedNode?.Id == node.Type.Id ? "selected" : null) @(ConnectedToSelection(node.Type.Id) ? "" : "subdued") @(matchIds.Contains(node.Type.Id) ? "search-match" : null) @(activeMatch >= 0 && matches[activeMatch].Type.Id == node.Type.Id ? "current-match" : null)" transform="@($"translate({node.X} {node.Y})")" role="button" tabindex="0" aria-label="@(node.Type.FullName + ", " + NodeCaption(node.Type))" @onclick="() => SelectNodeClick(node.Type)" @ondblclick="() => OpenType(node.Type)" @onkeydown="e => SelectNodeKey(e, node.Type)">
                         <title>@node.Type.FullName · @node.Type.Project · @NodeCaption(node.Type) · @node.Connections connected types · Double-click to open type</title>
                         <rect width="240" height="68" rx="9" /><text x="14" y="27">@Short(node.Type.Name, 28)</text><text class="node-caption" x="14" y="49">@NodeCaption(node.Type)</text>
                         @if (IsTestType(node.Type)) { <rect class="test-outline" x="5" y="5" width="230" height="58" rx="6" /> }
+                        @if (matchIds.Contains(node.Type.Id)) { <rect class="search-outline" x="-5" y="-5" width="250" height="78" rx="12" /> }
                     </g>
                 }
             </g>
         </svg>
-        @if (nodes.Count == 0) { <p class="graph-empty">No changed indexed types.</p> }
+        @if (nodes.Count == 0) { <p class="graph-empty">No indexed types match the current filters.</p> }
         else if (!VisibleEdges.Any()) { <p class="graph-empty">No indexed relationships in this view. Types remain available to inspect.</p> }
     </div>
     <aside class="graph-inspector panel-scroll" hidden="@(!inspectorOpen)" aria-label="Graph selection details" @ref="inspector">
@@ -90,6 +101,11 @@
     private ReviewEvidence? previousEvidence;
     private bool initialise, attached, inspectorOpen, inspectPending;
     private bool changedOnly = true;
+    private bool showTests = true;
+    private string search = "";
+    private List<ReviewGraphPresentation.Node> matches = [];
+    private HashSet<string> matchIds = [];
+    private int activeMatch = -1;
     private int selectionVersion;
     protected override void OnParametersSet()
     {
@@ -102,14 +118,38 @@
     private void Rebuild(string? preferredType)
     {
         selectionVersion++;
-        graph = ReviewGraphPresentation.Build(Evidence.Code, Type?.Id, changedOnly);
+        graph = ReviewGraphPresentation.Build(Evidence.Code, Type?.Id, changedOnly, showTests);
         nodeIndex = nodes.ToDictionary(x => x.Type.Id);
         selectedNode = nodeIndex.GetValueOrDefault(preferredType ?? "")?.Type ?? nodeIndex.GetValueOrDefault(graph.HubId ?? "")?.Type;
         selectedEdge = null; initialise = true;
         if (selectedNode is null) { inspectorOpen = false; }
         inspectPending = inspectorOpen;
+        Search();
     }
     private void ChangeFilter() => Rebuild(selectedNode?.Id);
+    private void Search()
+    {
+        matches = ReviewGraphPresentation.Search(graph, search);
+        matchIds = matches.Select(x => x.Type.Id).ToHashSet(StringComparer.Ordinal);
+        activeMatch = -1;
+    }
+    private void ClearSearch() { search = ""; Search(); }
+    private async Task SearchKey(KeyboardEventArgs e)
+    {
+        if (e.Key == "Enter") { await MoveMatch(e.ShiftKey ? -1 : 1); }
+        else if (e.Key == "Escape") { ClearSearch(); }
+    }
+    private async Task MoveMatch(int direction)
+    {
+        if (matches.Count == 0) { return; }
+        activeMatch = activeMatch < 0 ? direction > 0 ? 0 : matches.Count - 1 : (activeMatch + direction + matches.Count) % matches.Count;
+        selectionVersion++;
+        selectedNode = matches[activeMatch].Type;
+        selectedEdge = null;
+        await CenterSelection();
+        // If a narrow-screen inspector overlays the canvas, keep the match visible.
+        inspectPending = inspectorOpen;
+    }
     private void ToggleInspector()
     {
         selectionVersion++;
@@ -135,7 +175,7 @@
     private bool ConnectedToSelection(string id) => selectedNode is null || id == selectedNode.Id
         || VisibleEdges.Any(x => (x.From == id && x.To == selectedNode.Id) || (x.To == id && x.From == selectedNode.Id));
     private void SelectNode(TypeEvidence type) { selectionVersion++; selectedNode = type; selectedEdge = null; inspectorOpen = true; inspectPending = true; }
-    private static bool IsTestType(TypeEvidence type) => type.Members.Any(x => x.IsTest);
+    private static bool IsTestType(TypeEvidence type) => ReviewGraphPresentation.IsTestType(type);
     private static string NodeCaption(TypeEvidence type) => $"{type.Kind} · {type.Change}" + (IsTestType(type) ? " · Tests" : "");
     private async Task SelectNodeClick(TypeEvidence type)
     {

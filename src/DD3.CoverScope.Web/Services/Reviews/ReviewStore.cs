@@ -63,6 +63,29 @@ public sealed class ReviewStore(IFileSystemBroker files, string? rootPath = null
         if (files.DirectoryExists(directory)) { throw new IOException("Run analysis could not be discarded."); }
     }
 
+    public void CleanupTemporaryFiles(ReviewRecord record)
+    {
+        var directory = AnalysisDirectory(record);
+        var errors = new List<string>();
+        Remove("baseline-source", true);
+        Remove("baseline.tar", false);
+        Remove("head-index.json", false);
+        Remove("baseline-index.json", false);
+        if (errors.Count > 0) { throw new IOException(string.Join("; ", errors)); }
+
+        void Remove(string name, bool isDirectory)
+        {
+            var path = Path.Combine(directory, name);
+            try
+            {
+                if (isDirectory && files.DirectoryExists(path)) { files.DeleteDirectory(path); }
+                else if (!isDirectory && files.FileExists(path)) { files.DeleteFile(path); }
+            }
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+            { errors.Add(name + ": " + ex.Message); }
+        }
+    }
+
     public async Task<ReviewSnapshot> ReadAsync(ReviewRecord requested, CancellationToken token = default)
     {
         var record = JsonSerializer.Deserialize<ReviewRecord>(await files.ReadAsync(Path.Combine(RunDirectory(requested), "record.json"), token), Json)
@@ -81,12 +104,16 @@ public sealed class ReviewStore(IFileSystemBroker files, string? rootPath = null
         var directory = RepositoryDirectory(repository);
         if (!files.DirectoryExists(directory)) { return []; }
         var records = new List<ReviewRecord>();
-        foreach (var path in files.Files(directory, "record.json", SearchOption.AllDirectories))
+        // Run records are direct children; do not scan restored package trees.
+        foreach (var runDirectory in files.Directories(directory))
         {
+            if (!Guid.TryParseExact(Path.GetFileName(runDirectory), "N", out _)) { continue; }
+            var path = Path.Combine(runDirectory, "record.json");
+            if (!files.FileExists(path)) { continue; }
             try
             {
                 var record = JsonSerializer.Deserialize<ReviewRecord>(await files.ReadAsync(path, token), Json);
-                if (record is { SchemaVersion: 2 } && record.Repository == repository) { records.Add(record); }
+                if (record is { SchemaVersion: 2 } && record.Repository == repository && record.Id == Path.GetFileName(runDirectory)) { records.Add(record); }
             }
             catch (JsonException) { /* An interrupted atomic write must not hide other runs. */ }
         }

@@ -142,6 +142,12 @@ details[open].tree-project > summary::before, details[open].tree-folder > summar
 .graph-toolbar button { font-size:11px; padding:3px 8px; }
 .graph-toolbar small { margin-left:auto; font-size:10px; }
 .graph-filter { display:flex; align-items:center; gap:6px; margin-top:8px; font-size:11px; }
+.graph-filters { display:flex; flex-wrap:wrap; gap:16px; }
+.graph-search { display:flex; flex-wrap:wrap; align-items:end; gap:6px; margin-top:10px; }
+.graph-search label { flex:1 1 200px; min-width:0; font-size:11px; color:var(--muted); }
+.graph-search input { width:100%; min-width:0; font-size:12px; }
+.graph-search button { font-size:11px; }
+.graph-search [role="status"] { flex-basis:100%; font-size:11px; color:var(--muted); overflow-wrap:anywhere; }
 .graph-workspace { position:relative; display:grid; grid-template-columns:minmax(0,1fr); height:clamp(420px, 55vh, 760px); min-height:420px; flex:none; overflow:hidden; }
 .graph-workspace.details-open { grid-template-columns:minmax(0,1fr) 300px; }
 .graph-canvas { position:relative; min-width:0; min-height:0; height:100%; background:radial-gradient(circle,#60537e30 1px,transparent 1px),var(--bg); background-size:18px 18px; overflow:hidden; }
@@ -164,6 +170,9 @@ details[open].tree-project > summary::before, details[open].tree-folder > summar
 .graph-edge.retained path { stroke:#9a94a6; }
 .graph-edge.subdued { opacity:0.2; }
 .graph-node.subdued { opacity:0.65; }
+.graph-node.search-match { opacity:1; }
+.graph-node rect.search-outline { fill:none; stroke:#f0d791; stroke-width:2; stroke-dasharray:none; pointer-events:none; }
+.graph-node.current-match rect.search-outline { stroke-width:4; }
 .graph-edge text { display:none; }
 .graph-edge:hover, .graph-edge:focus, .graph-edge.selected { opacity:1; }
 .graph-edge:hover text, .graph-edge:focus text, .graph-edge.selected text { display:block; }

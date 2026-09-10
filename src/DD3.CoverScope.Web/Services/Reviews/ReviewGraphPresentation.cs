@@ -13,10 +13,16 @@ public static class ReviewGraphPresentation
         public List<Group> Groups { get; init; } = [];
     }
 
-    public static Layout Build(CodeEvidence code, string? initialType = null, bool changedOnly = false)
+    public static bool IsTestType(TypeEvidence type) => type.Members.Any(x => x.IsTest);
+
+    public static List<Node> Search(Layout graph, string query) => string.IsNullOrWhiteSpace(query) ? [] : graph.Nodes
+        .Where(x => x.Type.FullName.Contains(query.Trim(), StringComparison.OrdinalIgnoreCase))
+        .OrderBy(x => x.Type.FullName, StringComparer.OrdinalIgnoreCase).ThenBy(x => x.Type.Id, StringComparer.Ordinal).ToList();
+
+    public static Layout Build(CodeEvidence code, string? initialType = null, bool changedOnly = false, bool showTests = true)
     {
-        var types = code.Types.ToDictionary(x => x.Id, StringComparer.Ordinal);
-        var changed = code.Types.Where(x => changedOnly ? x.Change is "Added" or "Modified" or "Deleted"
+        var types = code.Types.Where(x => showTests || !IsTestType(x)).ToDictionary(x => x.Id, StringComparer.Ordinal);
+        var changed = types.Values.Where(x => changedOnly ? x.Change is "Added" or "Modified" or "Deleted"
             : x.Change != "Unchanged" || x.Id == initialType).Select(x => x.Id).ToHashSet(StringComparer.Ordinal);
         var relationships = code.Relationships.Where(x => types.ContainsKey(x.From) && types.ContainsKey(x.To)
             && x.Revision is "Head" or "Baseline").ToList();
