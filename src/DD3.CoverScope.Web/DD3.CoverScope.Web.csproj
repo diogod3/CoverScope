@@ -9,7 +9,7 @@
     <PackAsTool>true</PackAsTool>
     <ToolCommandName>coverscope</ToolCommandName>
     <PackageId>DD3.CoverScope.Tool</PackageId>
-    <Version>0.2.0-beta.1</Version>
+    <Version>0.2.0-beta.2</Version>
     <Authors>Diogo Duarte</Authors>
     <Description>A local .NET workspace for reviewing committed changes, tests, coverage, and formatting.</Description>
     <PackageTags>dotnet-tool;code-review;code-coverage;git;blazor</PackageTags>

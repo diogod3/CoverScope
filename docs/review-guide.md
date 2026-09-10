@@ -1,6 +1,6 @@
 # Review guide
 
-Detailed guidance for CoverScope `0.2.0-beta.1`. See the [README](../README.md) for an introduction and installation.
+Detailed guidance for CoverScope `0.2.0-beta.2`. See the [README](../README.md) for an introduction and installation.
 
 ## Requirements
 
@@ -43,6 +43,8 @@ The diff hides raw Git metadata, separates distant changed sections, and shows b
 ### Relationship graph
 
 - **Changed objects only** is enabled by default. Turn it off to include related unchanged types and their interface/implementation groups.
+- **Show tests** is enabled by default. Turn it off to hide types with indexed test definitions and their relationships. Helpers without test definitions remain visible.
+- **Find class or interface** highlights visible matches by name or namespace, ignoring case. Typing leaves the camera in place. Use **Next**/**Previous** (or Enter/Shift+Enter) to center on a match; **Clear** or Escape removes the highlights. Search follows the active type filters.
 - Pan, zoom, use **Fit all**, or center the selected type. The graph initially centers on the type with the most distinct connections in the displayed graph. Selecting a node does not replace the graph.
 - Single-click a node to show its side-panel details; double-click to open its type. Keyboard selection and the side panel's **Open type** button are also available.
 - Interfaces and implementations are grouped while retaining separate nodes and exact relationship endpoints. A concrete reference points to that concrete type; an interface reference is not rewritten into an assumed dependency-injection binding.
@@ -78,6 +80,12 @@ Formatting uses the formatter's default project configuration; the run's build c
 - **Markdown summary**: a compact comparison and verification summary with availability, limitations, test failures, and formatting information.
 - **Full JSON evidence**: declarations, source snapshots, diffs, relationships, coverage details, diagnostics, and captured tool output for deeper inspection or agent use.
 
+### Temporary-file cleanup
+
+Completed and failed runs remove their temporary baseline checkout, including restored packages, archive, and intermediate source indexes after saving evidence. Saved source, review history, and verification reports remain available.
+
+Use **Runs → Clean temporary files** to reclaim these files from earlier completed attempts or retry a cleanup failure. The action applies to the selected repository and cannot run while another process owns collection. Failures remain visible in the affected run. Unresolved attempts are skipped until the existing recovery flow confirms external processes have stopped. There is no automatic deletion of saved review history.
+
 ## Evidence limits and known limitations
 
 - File and line changes cover the Git repository comparison. Type/member counts and graph nodes cover indexed C# source in the selected target's loaded projects. Razor markup, source-generator output, and SDK test entry points are outside the declaration scope.
@@ -88,7 +96,7 @@ Formatting uses the formatter's default project configuration; the run's build c
 - Source changes during collection flag consistency problems. Coverage overlays and branch coverage ranges require established source consistency. Older snapshots without richer coverage or captured source cannot supply those missing details.
 - The current test profile is xUnit v2/VSTest/Coverlet. Other runners, test frameworks, and non-C# declaration indexing are outside the validated scope.
 - Uncommitted comparisons, migration from legacy reports, manual report import, mutation testing with Stryker, and a direct agent API are outside this beta.
-- Equivalent behaviour across Windows, Linux, and macOS has not been established. See [validation status](development.md#development-and-validation).
+- CI checks Windows, Linux, and macOS, but does not establish every interactive scenario. See [validation scope](development.md#development-and-validation).
 
 ## Cancellation and recovery
 
@@ -96,7 +104,7 @@ Once an active run exists, **Cancel run** abandons the attempt. CoverScope stops
 
 Process execution uses an owned Unix session/process group or Windows Job Object. Reusable build servers are disabled for owned invocations. Cancellation does not undo external side effects already caused by tests, and tools that deliberately detach from the owned process group cannot be treated as ordinary managed children.
 
-If stopping, cleanup, or persistence cannot be confirmed, the condition remains visible and conflicting collection is blocked. After an interrupted application process, history offers recovery after the reviewer confirms that external work has stopped. Recovery discards the interrupted analysis; only acknowledge it after checking the remaining processes.
+If stopping, cancellation cleanup, or persistence cannot be confirmed, the condition remains visible and conflicting collection is blocked. After an interrupted application process, history offers recovery after the reviewer confirms that external work has stopped. Recovery discards the interrupted analysis; only acknowledge it after checking the remaining processes.
 
 ## Local data
 

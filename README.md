@@ -46,7 +46,7 @@ Code exploration currently focuses on C#. The graph shows static code relationsh
 Install the beta from NuGet.org:
 
 ```text
-dotnet tool install --global DD3.CoverScope.Tool --version 0.2.0-beta.1 --source https://api.nuget.org/v3/index.json
+dotnet tool install --global DD3.CoverScope.Tool --version 0.2.0-beta.2 --source https://api.nuget.org/v3/index.json
 coverscope
 ```
 
@@ -77,7 +77,7 @@ This opens setup with the target selected. Once a review finishes, return to it 
 
 - [Review guide](docs/review-guide.md) — navigation, coverage, formatting, saved runs, and evidence limits.
 - [Development](docs/development.md) — building, testing, architecture, and releases.
-- [Beta release notes](docs/releases/v0.2.0-beta.1.md) — what's changed and compatibility notes.
+- [Beta release notes](docs/releases/v0.2.0-beta.2.md) — what's changed and compatibility notes.
 
 Found something confusing or incorrect? Open a repository issue with your version, reproduction steps, and expected/actual behaviour. Screenshots and exported summaries can help explain the problem. Check them for private code, paths, or test output before sharing.
 
