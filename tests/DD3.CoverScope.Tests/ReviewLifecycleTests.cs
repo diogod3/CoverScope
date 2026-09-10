@@ -83,6 +83,80 @@ public sealed class ReviewLifecycleTests : IDisposable
     private static ReviewOrchestrationService Create(IProcessBroker broker, IFileSystemBroker files, ReviewStore store) =>
         new(new(broker, files), new(broker, files, new()), new(broker, files), store, new Lifetime(), NullLogger<ReviewOrchestrationService>.Instance);
 
+    [Theory]
+    [InlineData(false, ReviewStatus.Finished)]
+    [InlineData(true, ReviewStatus.Failed)]
+    public async Task TerminalRunsCleanTemporaryFilesAfterSavingEvidence(bool dirtyAfterIndex, ReviewStatus expected)
+    {
+        var files = new FileSystemBroker();
+        var store = new ReviewStore(files, Path.Combine(directory, "runs"));
+        var runs = Create(new FixtureProcesses(directory) { DirtyAfterIndex = dirtyAfterIndex }, files, store);
+        var completed = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        runs.Changed += () => { if (runs.ActiveRecord(directory) is null) { completed.TrySetResult(); } };
+
+        var record = await runs.StartAsync(new(Target, new("refs/heads/main", false, false)));
+        await completed.Task.WaitAsync(TimeSpan.FromSeconds(10));
+
+        var snapshot = await store.ReadAsync(record);
+        Assert.Equal(expected, snapshot.Record.Status);
+        Assert.NotNull(snapshot.Evidence);
+        Assert.Null(snapshot.Record.CleanupError);
+        Assert.False(Directory.Exists(Path.Combine(store.AnalysisDirectory(record), "baseline-source")));
+        Assert.False(File.Exists(Path.Combine(store.AnalysisDirectory(record), "head-index.json")));
+    }
+
+    [Fact]
+    public async Task CleanupFailurePreservesReportAndHistoryCanRetryWithoutTouchingUnresolvedRuns()
+    {
+        using var files = new FailingFinalRecordFiles { FailFinalRecord = false, FailCleanup = true };
+        var store = new ReviewStore(files, Path.Combine(directory, "runs"));
+        var runs = Create(new FixtureProcesses(directory), files, store);
+        var completed = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        runs.Changed += () => { if (runs.ActiveRecord(directory) is null) { completed.TrySetResult(); } };
+        var record = await runs.StartAsync(new(Target, new("refs/heads/main", false, false)));
+        await completed.Task.WaitAsync(TimeSpan.FromSeconds(10));
+
+        var snapshot = await store.ReadAsync(record);
+        Assert.Equal(ReviewStatus.Finished, snapshot.Record.Status);
+        Assert.NotNull(snapshot.Evidence);
+        Assert.Contains("Temporary files remain", snapshot.Record.CleanupError ?? "");
+        Assert.False(File.Exists(Path.Combine(store.AnalysisDirectory(record), "head-index.json")));
+        var unresolved = record with { Id = Guid.NewGuid().ToString("N"), Status = ReviewStatus.Running };
+        await store.SaveRecordAsync(unresolved);
+        var unresolvedSource = Path.Combine(store.AnalysisDirectory(unresolved), "baseline-source");
+        Directory.CreateDirectory(unresolvedSource);
+        files.FailCleanup = false;
+
+        using (store.Acquire(directory))
+        { await Assert.ThrowsAsync<InvalidOperationException>(() => runs.CleanupHistoryAsync(directory)); }
+        Assert.Equal(0, await runs.CleanupHistoryAsync(directory));
+
+        Assert.Null((await store.ReadAsync(record)).Record.CleanupError);
+        Assert.NotNull((await store.ReadAsync(record)).Evidence);
+        Assert.False(Directory.Exists(Path.Combine(store.AnalysisDirectory(record), "baseline-source")));
+        Assert.True(Directory.Exists(unresolvedSource));
+        await runs.RecoverAsync(unresolved);
+        Assert.False(Directory.Exists(unresolvedSource));
+        Assert.Equal(ReviewStatus.Interrupted, (await store.ReadAsync(unresolved)).Record.Status);
+    }
+
+    [Fact]
+    public async Task UnconfirmedProcessStopRetainsTemporaryInputsAndBlocksHistoryCleanup()
+    {
+        using var files = new FailingFinalRecordFiles { FailFinalRecord = false };
+        var store = new ReviewStore(files, Path.Combine(directory, "runs"));
+        var runs = Create(new FixtureProcesses(directory) { StopUnconfirmed = true }, files, store);
+        var unresolved = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        runs.Changed += () =>
+        { if (runs.ActiveRecord(directory)?.Status == ReviewStatus.CancellationIncomplete) { unresolved.TrySetResult(); } };
+        var record = await runs.StartAsync(new(Target, new("refs/heads/main", false, false)));
+        await unresolved.Task.WaitAsync(TimeSpan.FromSeconds(10));
+
+        Assert.True(Directory.Exists(Path.Combine(store.AnalysisDirectory(record), "baseline-source")));
+        Assert.True(File.Exists(Path.Combine(store.AnalysisDirectory(record), "head-index.json")));
+        await Assert.ThrowsAsync<InvalidOperationException>(() => runs.CleanupHistoryAsync(directory));
+    }
+
     private sealed class Lifetime : IHostApplicationLifetime
     {
         public CancellationToken ApplicationStarted => CancellationToken.None;
@@ -95,6 +169,9 @@ public sealed class ReviewLifecycleTests : IDisposable
     {
         public bool PauseFormatting { get; init; }
         public bool CorruptCoverage { get; init; }
+        public bool DirtyAfterIndex { get; init; }
+        public bool StopUnconfirmed { get; init; }
+        private bool indexed;
         public TaskCompletionSource FormattingEntered { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
 
         public async Task<ProcessResult> ExecuteAsync(ProcessRequest request, CancellationToken token)
@@ -103,11 +180,20 @@ public sealed class ReviewLifecycleTests : IDisposable
             var args = request.Arguments.ToArray();
             if (request.Executable == "git")
             {
+                if (indexed && DirtyAfterIndex && args.Contains("status")) { return new(0, " M Example.cs", ""); }
                 var output = args.Contains("--show-toplevel") ? root : args.Contains("--absolute-git-dir") ? Path.Combine(root, ".git")
                     : args.Contains("--abbrev-ref") ? "feature" : args.Contains("for-each-ref") ? "refs/heads/main\n"
                     : args.Contains("merge-base") ? "base\n" : args.Contains("HEAD^{commit}") ? "head\n"
                     : args.Contains("--verify") ? "target\n" : args.Contains("--version") ? "git version fixture" : "";
-                if (args.Contains("archive")) { throw new IOException("Baseline archive unavailable in this fixture."); }
+                if (args.Contains("archive"))
+                {
+                    var archive = args.Single(x => x.StartsWith("--output=", StringComparison.Ordinal))[9..];
+                    var packages = Path.Combine(Path.GetDirectoryName(archive)!, "baseline-source", "packages");
+                    Directory.CreateDirectory(packages);
+                    await File.WriteAllTextAsync(Path.Combine(packages, "package.dll"), "temporary", token);
+                    if (StopUnconfirmed) { throw new ProcessStoppingException("Fixture process may still be running."); }
+                    throw new IOException("Baseline archive unavailable in this fixture.");
+                }
                 return new(0, output, "");
             }
             if (args[0] == "format" && PauseFormatting)
@@ -128,6 +214,7 @@ public sealed class ReviewLifecycleTests : IDisposable
             {
                 var output = args[Array.IndexOf(args, "--internal-index") + 3];
                 await File.WriteAllTextAsync(output, "{\"complete\":true}", token);
+                indexed = true;
             }
             return new(0, "10.0.100", "");
         }
@@ -135,6 +222,8 @@ public sealed class ReviewLifecycleTests : IDisposable
 
     private sealed class FailingFinalRecordFiles : IFileSystemBroker, IDisposable
     {
+        public bool FailFinalRecord { get; init; } = true;
+        public bool FailCleanup { get; set; }
         private readonly FileSystemBroker inner = new();
         private readonly List<IDisposable> leases = [];
         public bool FileExists(string path) => inner.FileExists(path);
@@ -145,14 +234,19 @@ public sealed class ReviewLifecycleTests : IDisposable
         public void Replace(string source, string destination)
         {
             var text = File.ReadAllText(source);
-            if (destination.EndsWith("record.json", StringComparison.Ordinal) &&
+            if (FailFinalRecord && destination.EndsWith("record.json", StringComparison.Ordinal) &&
                 (text.Contains("\"Finished\"", StringComparison.Ordinal) || text.Contains("\"Failed\"", StringComparison.Ordinal)))
             { throw new IOException("Simulated final record persistence failure."); }
             inner.Replace(source, destination);
         }
         public void DeleteFile(string path) => inner.DeleteFile(path);
-        public void DeleteDirectory(string path) => inner.DeleteDirectory(path);
+        public void DeleteDirectory(string path)
+        {
+            if (FailCleanup && Path.GetFileName(path) == "baseline-source") { throw new IOException("Fixture cleanup failure."); }
+            inner.DeleteDirectory(path);
+        }
         public string[] Files(string path, string pattern, SearchOption option = SearchOption.TopDirectoryOnly) => inner.Files(path, pattern, option);
+        public string[] Directories(string path) => inner.Directories(path);
         public IDisposable Lease(string path) { var lease = inner.Lease(path); leases.Add(lease); return lease; }
         public Task ExtractTarAsync(string source, string target, CancellationToken token) => inner.ExtractTarAsync(source, target, token);
         public void Dispose() { foreach (var lease in leases) { lease.Dispose(); } }

@@ -20,6 +20,8 @@ public sealed record ReviewRecord(string Id, string Repository, string TargetPat
     public ReviewStatus Status { get; init; } = ReviewStatus.Preparing;
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     public string? OperationalError { get; init; }
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public string? CleanupError { get; init; }
 }
 
 public sealed record CheckEvidence(string Name)

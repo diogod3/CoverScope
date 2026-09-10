@@ -82,12 +82,16 @@
         }
         else if (!setup && view == "Runs")
         {
-            <h1>Run history</h1>
+            <div class="title-row"><h1>Run history</h1><button @onclick="CleanupHistory" disabled="@(busy || activeRun is not null || history.Count == 0)">@(cleaning ? "Cleaning…" : "Clean temporary files")</button></div>
+            <p class="muted">Remove temporary checkouts and indexing files from completed attempts. Saved reviews and captured source are kept. Resolve interrupted attempts before their files can be cleaned.</p>
+            @if (cleaning) { <div class="loading-status" role="status"><span class="loading-spinner" aria-hidden="true"></span>Cleaning temporary files…</div> }
             <section class="surface">
                 @if (history.Count == 0) { <p class="muted">No saved runs for this repository.</p> }
                 @foreach (var run in history)
                 {
-                    <div class="list-row"><div><button class="text-button" @onclick="() => Select(run)">@run.StartedAt.ToLocalTime().ToString("g") · @run.Status</button><p class="muted">@Short(run.Commit) → @run.TargetRef</p></div></div>
+                    <div class="list-row"><div><button class="text-button" @onclick="() => Select(run)">@run.StartedAt.ToLocalTime().ToString("g") · @run.Status</button><p class="muted">@Short(run.Commit) → @run.TargetRef</p>
+                    @if (run.CleanupError is not null) { <p class="notice">@run.CleanupError</p> }
+                    </div></div>
                 }
             </section>
         }
@@ -125,6 +129,7 @@
                 { <ReviewChanges Evidence="evidence" InitialFile="@selectedFile" OnType="OpenType" OnMember="OpenMember" /> }
             }
             @if (selected.Record.OperationalError is not null) { <p class="notice error">@selected.Record.OperationalError</p> }
+            @if (selected.Record.CleanupError is not null) { <p class="notice">@selected.Record.CleanupError</p> }
         }
         else if (!setup && view != "Runs") { <p class="muted">Start a run or select one from history.</p> }
     </main>
@@ -134,7 +139,7 @@
 
 @code {
     private string targetPath = "", targetBranch = "", configuration = "Debug", view = "Overview", notification = "";
-    private bool setup = true, busy, starting, testChecks = true, formatCheck = true, exporting, jsonExport, recoveryChecked;
+    private bool setup = true, busy, starting, cleaning, testChecks = true, formatCheck = true, exporting, jsonExport, recoveryChecked;
     private string? error, selectedFile, selectedMemberId;
     private RepositoryContext? repository;
     private ReviewSnapshot? selected;
@@ -230,6 +235,19 @@
         if (!recoveryChecked || selected is null) { return; }
         try { await Runs.RecoverAsync(selected.Record); await Refresh(); }
         catch (Exception ex) { error = ex.Message; }
+    }
+    private async Task CleanupHistory()
+    {
+        if (busy || repository is null) { return; }
+        busy = true; cleaning = true; error = null;
+        try
+        {
+            var failures = await Runs.CleanupHistoryAsync(repository.Root);
+            notification = failures == 0 ? "Temporary-file cleanup complete. Saved reviews were kept." : $"Cleanup incomplete for {failures} run(s). See their history entries.";
+            await Refresh();
+        }
+        catch (Exception ex) { error = ex.Message; }
+        finally { busy = false; cleaning = false; }
     }
     private void OpenChanges() { selectedFile = null; view = "Changes"; }
     private void OpenVerification() => view = "Verification";

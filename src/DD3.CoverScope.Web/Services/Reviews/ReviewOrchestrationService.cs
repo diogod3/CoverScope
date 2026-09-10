@@ -91,6 +91,36 @@ public sealed class ReviewOrchestrationService(
         Notify();
     }
 
+    public async Task<int> CleanupHistoryAsync(string repository)
+    {
+        // The same cross-process lease used by collection prevents deleting live inputs.
+        using var lease = store.Acquire(repository);
+        var history = await store.HistoryAsync(repository);
+        var failures = 0;
+        foreach (var record in history.Where(x => x.Status is ReviewStatus.Finished or ReviewStatus.Failed or ReviewStatus.Cancelled or ReviewStatus.Interrupted))
+        {
+            var cleaned = await CleanupAsync(record);
+            await store.SaveRecordAsync(cleaned);
+            if (cleaned.CleanupError is not null) { failures++; }
+        }
+        Notify();
+        return failures;
+    }
+
+    private async Task<ReviewRecord> CleanupAsync(ReviewRecord record)
+    {
+        try
+        {
+            await Task.Run(() => store.CleanupTemporaryFiles(record));
+            return record with { CleanupError = null };
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            logger.LogWarning(ex, "Temporary files for review {RunId} could not be fully removed.", record.Id);
+            return record with { CleanupError = "Temporary files remain. Use Clean temporary files in Runs to retry. " + ex.Message };
+        }
+    }
+
     private async Task ObserveExecutionAsync(ActiveRun run, ComparisonContext comparison, ReviewSettings settings)
     {
         try { await ExecuteAsync(run, comparison, settings); }
@@ -149,6 +179,9 @@ public sealed class ReviewOrchestrationService(
                 SetPhase(run, "Saving review report");
                 await store.SaveEvidenceAsync(run.Record, evidence, token);
                 token.ThrowIfCancellationRequested();
+                SetPhase(run, "Cleaning temporary files");
+                run.Record = await CleanupAsync(run.Record);
+                token.ThrowIfCancellationRequested();
                 var finished = run.Record with { Status = ReviewStatus.Finished, EndedAt = DateTimeOffset.UtcNow };
                 await store.SaveRecordAsync(finished, CancellationToken.None);
                 lock (sync)
@@ -178,6 +211,7 @@ public sealed class ReviewOrchestrationService(
                 evidence.SourceConsistency = "Collection incomplete: " + ex.Message;
                 run.Record = run.Record with { Status = ReviewStatus.Failed, EndedAt = DateTimeOffset.UtcNow, OperationalError = ex.Message };
                 await store.SaveEvidenceAsync(run.Record, evidence, CancellationToken.None);
+                run.Record = await CleanupAsync(run.Record);
                 await store.SaveRecordAsync(run.Record);
                 terminalRecorded = true;
             }
