@@ -108,7 +108,9 @@ public sealed class ReviewProcessTests : IDisposable
             start.ArgumentList.Add(Assembly.GetExecutingAssembly().Location);
             start.ArgumentList.Add("child");
             using var child = Process.Start(start)!;
-            File.WriteAllText("child.pid", child.Id.ToString());
+            // Publish readiness only after the complete PID has been written.
+            File.WriteAllText("child.pid.tmp", child.Id.ToString());
+            File.Move("child.pid.tmp", "child.pid");
         }
         await Task.Delay(TimeSpan.FromMinutes(5));
         """);

@@ -11,31 +11,22 @@ dotnet restore DD3.CoverScope.sln
 dotnet build DD3.CoverScope.sln --configuration Release --no-restore
 dotnet test DD3.CoverScope.sln --configuration Release --no-build
 dotnet pack src/DD3.CoverScope.Web/DD3.CoverScope.Web.csproj --configuration Release --no-build --output artifacts/packages
-pwsh -File scripts/Inspect-Package.ps1 -PackagePath artifacts/packages/DD3.CoverScope.Tool.0.2.0-beta.1.nupkg
-pwsh -File scripts/Smoke-Test.ps1 -PackagePath artifacts/packages/DD3.CoverScope.Tool.0.2.0-beta.1.nupkg
+pwsh -File scripts/Inspect-Package.ps1 -PackagePath artifacts/packages/DD3.CoverScope.Tool.0.2.0-beta.2.nupkg
+pwsh -File scripts/Smoke-Test.ps1 -PackagePath artifacts/packages/DD3.CoverScope.Tool.0.2.0-beta.2.nupkg
 ```
 
 The final two commands require PowerShell. Package inspection checks required contents and unwanted embedded data. The smoke test installs the package and checks that an explicit target opens setup without automatic collection; it does not execute a complete review. `ReviewProcessTests` exercises Git comparisons, source-worker integration, and process cancellation, and can restore temporary fixture projects.
 
-Validation reported by the maintainer for implementation commit `b132c50`:
+The maintainer validated installation, a complete review, and reopening saved history for the previous beta. CI checks build, tests, packing, package contents, and installed-tool startup on Windows, Linux, and macOS. Use the [current workflow results](https://github.com/diogod3/CoverScope/actions/workflows/ci.yml) to assess a specific commit. These checks do not replace visual verification of graph interactions or a complete review against a real repository.
 
-| Check | Status |
-| --- | --- |
-| Local build and interactive use of the latest implementation | Confirmed by the maintainer. |
-| Local package creation, installation outside the checkout, and launch | Confirmed by the maintainer. |
-| Complete review using the installed package | Confirmed successful by the maintainer. |
-| Loading a previous saved run | Confirmed by the maintainer. |
-| Complete Windows/Linux/macOS validation matrix | Not established. |
-| Automated release publication | The NuGet.org workflow still needs its first successful release run. |
-
-These are reported local checks. Earlier exported runs were also inspected for collection and evidence consistency. Use the current CI results to assess automated validation for a release.
+NuGet.org publication was established with [v0.2.0-beta.1](https://github.com/diogod3/CoverScope/releases/tag/v0.2.0-beta.1). Each new release must pass its own validation and publication workflow.
 
 ## Try a local package
 
 After packing, install in a new folder outside the checkout:
 
 ```text
-dotnet tool install DD3.CoverScope.Tool --tool-path ../coverscope-beta-test --version 0.2.0-beta.1 --source ./artifacts/packages --no-cache
+dotnet tool install DD3.CoverScope.Tool --tool-path ../coverscope-beta-test --version 0.2.0-beta.2 --source ./artifacts/packages --no-cache
 cd ../coverscope-beta-test
 ./coverscope
 ```
@@ -63,8 +54,8 @@ Merge the release changes into `main` and confirm CI passes. Keep the project `V
 ```text
 git switch main
 git pull --ff-only
-git tag -a v0.2.0-beta.1 -m "CoverScope v0.2.0-beta.1"
-git push origin v0.2.0-beta.1
+git tag -a v0.2.0-beta.2 -m "CoverScope v0.2.0-beta.2"
+git push origin v0.2.0-beta.2
 ```
 
 The release workflow rejects tags whose version or release notes do not match, or whose commit is not on `main`. Review the workflow result and confirm that the package is available on NuGet.org before announcing the release. Installation instructions in the README apply once publication completes.
