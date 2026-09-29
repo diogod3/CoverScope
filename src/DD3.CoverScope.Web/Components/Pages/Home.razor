@@ -23,9 +23,9 @@
         <button class="primary push" @onclick="OpenSetup" disabled="@(busy || activeRun is not null)">New run</button>
     </header>
     <nav class="review-nav" aria-label="Review navigation">
-        @foreach (var name in new[] { "Overview", "Changes", "Verification", "Runs" })
+        @foreach (var name in (selectedType is null ? new[] { "Overview", "Changes", "Verification", "Runs" } : new[] { "Overview", "Review", "Changes", "Verification", "Runs" }))
         {
-            <button aria-current="@(view == name || (view == "Type" && name == "Changes") ? "page" : null)" @onclick="() => Navigate(name)" disabled="@busy">@name</button>
+            <button aria-current="@(view == name || (view == "Type" && name == "Review") ? "page" : null)" @onclick="() => Navigate(name)" disabled="@busy">@name</button>
         }
     </nav>
     <main class="@(setup ? "setup-main" : "workspace-main")">
@@ -123,10 +123,14 @@
                 }
                 else if (view == "Verification")
                 { <div class="verification-workspace"><ReviewVerification Evidence="evidence" OnFile="OpenFile" OnType="OpenType" /></div> }
-                else if (view == "Type" && selectedType is not null)
-                { <ReviewType Evidence="evidence" Type="selectedType" InitialMemberId="@selectedMemberId" OnType="OpenType" OnFile="OpenFile" OnVerification="OpenVerification" /> }
-                else
+                else if (view != "Type")
                 { <ReviewChanges Evidence="evidence" InitialFile="@selectedFile" OnType="OpenType" OnMember="OpenMember" /> }
+                @if (selectedType is not null)
+                {
+                    <div class="type-review-host" hidden="@(view != "Type")" @key="selected.Record.Id">
+                        <ReviewType Evidence="evidence" Type="selectedType" InitialMemberId="@selectedMemberId" NavigationRequest="@typeNavigationRequest" OnVerification="OpenVerification" />
+                    </div>
+                }
             }
             @if (selected.Record.OperationalError is not null) { <p class="notice error">@selected.Record.OperationalError</p> }
             @if (selected.Record.CleanupError is not null) { <p class="notice">@selected.Record.CleanupError</p> }
@@ -141,6 +145,7 @@
     private string targetPath = "", targetBranch = "", configuration = "Debug", view = "Overview", notification = "";
     private bool setup = true, busy, starting, cleaning, testChecks = true, formatCheck = true, exporting, jsonExport, recoveryChecked;
     private string? error, selectedFile, selectedMemberId;
+    private long typeNavigationRequest;
     private RepositoryContext? repository;
     private ReviewSnapshot? selected;
     private TypeEvidence? selectedType;
@@ -156,7 +161,7 @@
     }
     private static string Short(string? value) => value is null ? "Unavailable" : value[..Math.Min(10, value.Length)];
     private void OpenSetup() { setup = true; error = null; }
-    private void Navigate(string name) { view = name; setup = false; }
+    private void Navigate(string name) { view = name == "Review" ? "Type" : name; setup = false; }
     private async Task Browse()
     {
         if (picker is null || busy) { return; }
@@ -251,8 +256,8 @@
     }
     private void OpenChanges() { selectedFile = null; view = "Changes"; }
     private void OpenVerification() => view = "Verification";
-    private void OpenType(TypeEvidence type) { selectedType = type; selectedMemberId = null; view = "Type"; }
-    private void OpenMember((TypeEvidence Type, string MemberId) selection) { selectedType = selection.Type; selectedMemberId = selection.MemberId; view = "Type"; }
+    private void OpenType(TypeEvidence type) { selectedType = type; selectedMemberId = null; typeNavigationRequest++; view = "Type"; }
+    private void OpenMember((TypeEvidence Type, string MemberId) selection) { selectedType = selection.Type; selectedMemberId = selection.MemberId; typeNavigationRequest++; view = "Type"; }
     private void OpenFile(string path) { selectedFile = path; view = "Changes"; }
     private async Task CopyExport()
     {

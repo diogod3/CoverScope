@@ -1,0 +1,52 @@
+@using DD3.CoverScope.Models.Reviews
+@using DD3.CoverScope.Services.Reviews
+<section class="work-panel type-evidence">
+    <header class="panel-header"><div class="title-row"><h2>@Tab</h2><button @onclick="OnClose" aria-label="Close evidence panel">Close</button></div></header>
+    <div class="panel-scroll panel-padding">
+    @if (Tab == "Tests")
+    {
+        <p class="muted">Statically related tests; not proof that a test exercised a particular line. Parameterized cases share their test definition.</p>
+        @foreach (var test in definitions)
+        {
+            <div class="list-row"><button class="text-button ellipsis" title="@(test.Type.FullName + "." + test.Member.Name + " · " + test.Member.Path)" @onclick="() => OnTest.InvokeAsync(test)">@test.Type.Name.@test.Member.Name</button><span>@test.Member.Change</span></div>
+        }
+        @if (definitions.Count == 0) { <p class="muted">No related test definitions recorded.</p> }
+        @foreach (var execution in executions)
+        {
+            var definition = definitions.FirstOrDefault(x => ReviewTestNavigation.Executions(Evidence, x).Any(e => e.Id == execution.Id));
+            <details class="execution"><summary title="@execution.Name">@execution.Outcome · @execution.Name</summary>
+                @if (definition is not null) { <button @onclick="() => OnTest.InvokeAsync(definition)">Open test source</button> }
+                else { <p class="muted">An unambiguous source definition could not be resolved for this execution.</p> }
+                <pre>@execution.Message
+@execution.StackTrace
+@execution.Output</pre>
+            </details>
+        }
+        @if (executions.Count == 0) { <p class="muted">No related test executions resolved.</p> }
+    }
+    else
+    {
+        <p class="muted">Formatting · @Evidence.Formatting.Status</p>
+        @foreach (var finding in Evidence.FormattingFindings.Where(x => ReviewWorkspaceNavigation.Files(Type).Contains(x.Path)))
+        { <p><strong>@finding.Id</strong> · @finding.Path:@finding.Line<br />@finding.Message</p> }
+    }
+    </div>
+    <footer class="panel-footer"><button @onclick="OnVerification">Open verification</button></footer>
+</section>
+@code {
+    [Parameter, EditorRequired] public ReviewEvidence Evidence { get; set; } = default!;
+    [Parameter, EditorRequired] public TypeEvidence Type { get; set; } = default!;
+    [Parameter] public string Tab { get; set; } = "Tests";
+    [Parameter] public EventCallback<ReviewTestNavigation.Definition> OnTest { get; set; }
+    [Parameter] public EventCallback OnClose { get; set; }
+    [Parameter] public EventCallback OnVerification { get; set; }
+    private List<ReviewTestNavigation.Definition> definitions = [];
+    private List<TestExecution> executions = [];
+    protected override void OnParametersSet()
+    {
+        definitions = ReviewTestNavigation.Related(Evidence, Type);
+        var names = definitions.Select(x => x.Type.FullName).Distinct(StringComparer.Ordinal)
+            .Where(name => Evidence.Code.Types.Count(t => t.FullName == name) == 1).ToHashSet(StringComparer.Ordinal);
+        executions = Evidence.Executions.Where(x => names.Contains(x.ClassName.Split(',')[0].Trim())).ToList();
+    }
+}

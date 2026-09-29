@@ -11,10 +11,12 @@
     <div><h3>Coverage</h3><p>@CoverageLabel</p><p class="muted">Collector total includes all reported source scopes. Open coverage for the breakdown.</p><p class="muted">@Evidence.Coverage.Limitation</p>@if (Evidence.Coverage.Available && Evidence.SourceMatches) { <p>Changed executable lines: @ChangedCoverage</p> }</div>
     <div><h3>Formatting · @Evidence.Formatting.Status</h3>@if (Evidence.Formatting.Status == CheckStatus.Completed || Evidence.FormattingFindings.Count > 0) { <p>@Evidence.FormattingFindings.Count recorded findings</p> } else { <p class="muted">@(Evidence.Formatting.Status == CheckStatus.NotRun ? "Not run" : "Findings unavailable")</p> }<p class="muted">@Evidence.Formatting.Message</p></div></div>
 </section>
-<div class="overview-details">
+<div class="title-row"><h2>Explore the change</h2><button aria-pressed="@showTypes" @onclick="() => showTypes = !showTypes">@(showTypes ? "Hide changed types list" : "Show changed types list")</button></div>
+@if (!Evidence.Code.Complete) { <p class="notice">The code index is incomplete. Open the changed types list for limitations and diagnostics.</p> }
+<div class="overview-details @(showTypes ? "with-types" : null)">
 @if (Evidence.Code.Types.Any(x => x.Change != "Unchanged"))
 { <ReviewRelationships Evidence="Evidence" OnType="OnType" /> }
-<section class="work-panel overview-types"><header class="panel-header"><h2>Changed types</h2></header><div class="panel-scroll panel-padding">
+<section class="work-panel overview-types" hidden="@(!showTypes)"><header class="panel-header"><h2>Changed types</h2></header><div class="panel-scroll panel-padding">
     @if (!Evidence.Code.Complete) { <p class="notice">Code comparison is partial or unavailable. Counts are not reported as zero.</p> }
     @foreach (var type in Evidence.Code.Types.Where(x => x.Change != "Unchanged"))
     { <div class="list-row"><div><button class="text-button" title="@type.FullName" @onclick="() => OnType.InvokeAsync(type)">@type.FullName</button><p class="muted">@type.Project · @type.Files.Count source files</p></div><span>@type.Change →</span></div> }
@@ -36,6 +38,7 @@
     [Parameter] public EventCallback OnChanges { get; set; }
     [Parameter] public EventCallback OnVerification { get; set; }
     [Parameter] public EventCallback<TypeEvidence> OnType { get; set; }
+    private bool showTypes;
     private string Count(int count) => Evidence.Code.Complete ? count.ToString() : "Unavailable";
     private string CoverageLabel => !Evidence.Coverage.Available ? "Unavailable" : Metric(Evidence.Coverage.Files.Sum(x => x.CoveredLines.Count), Evidence.Coverage.Files.Sum(x => x.ExecutableLines.Count)) + " executable lines";
     private string ChangedCoverage

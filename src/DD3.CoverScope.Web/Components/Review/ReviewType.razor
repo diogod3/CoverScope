@@ -1,56 +1,90 @@
 @using DD3.CoverScope.Models.Reviews
-<div class="type-workspace">
-    <header class="selection-strip"><div class="shrink"><h2 class="ellipsis" title="@Type.FullName">@Type.FullName</h2><p class="muted ellipsis" title="@Type.Project">@Type.Kind · @Type.Project · @Type.Change</p></div>
-        <div class="source-file-buttons">@foreach (var file in Type.Files) { <button class="ellipsis" title="@file" @onclick="() => OnFile.InvokeAsync(file)">@System.IO.Path.GetFileName(file)</button> }</div>
+@using DD3.CoverScope.Services.Reviews
+@if (navigation.Current is { } visit)
+{
+<div class="type-workspace review-studio @mode.ToLowerInvariant() @(mobileGraph ? "mobile-graph" : null)" style="@($"--graph-share:{graphWidth}%")">
+    <header class="selection-strip studio-heading">
+        <div class="studio-history"><button disabled="@(!navigation.CanGoBack)" @onclick="Back" aria-label="Previous type">← Back</button><button disabled="@(!navigation.CanGoForward)" @onclick="Forward" aria-label="Next type">Forward →</button></div>
+        <div class="shrink"><h2 class="ellipsis" title="@visit.Type.FullName">@visit.Type.FullName</h2><p class="muted ellipsis" title="@visit.Type.Project">@visit.Type.Kind · @visit.Type.Change · @visit.Type.Project</p></div>
     </header>
-    <div class="type-layout">
-        <section class="work-panel"><header class="panel-header"><h2>Members</h2><p class="muted">All parts of this logical type</p></header><div class="panel-scroll">
-            @foreach (var item in Type.Members)
-            { <button class="tree-item @(member?.Id == item.Id ? "selected" : null)" title="@(item.Name + " · " + item.Path)" @onclick="() => member = item"><span class="node-icon">M</span><span class="node-label"><span class="ellipsis">@item.Name</span><small>@item.Kind · @item.Change</small></span></button> }
-            @if (Type.Members.Count == 0) { <p class="muted panel-padding">No explicit members recorded.</p> }
-        </div></section>
-        <ReviewSource Evidence="Evidence" Path="@(member?.Path ?? Type.Files.FirstOrDefault())" InitialLine="member?.Line" InitialRevision="@(member?.Change == "Deleted" || Type.Change == "Deleted" ? "Baseline" : "Head")" />
-        <aside class="type-related">
-            <div class="local-tabs">@foreach (var tab in new[] { "Graph", "Tests", "Formatting" }) { <button aria-pressed="@(relatedTab == tab)" @onclick="() => relatedTab = tab">@tab</button> }</div>
-            @if (relatedTab == "Graph") { <ReviewRelationships Evidence="Evidence" Type="Type" OnType="OnType" /> }
-            else if (relatedTab == "Tests")
-            { <section class="work-panel"><header class="panel-header"><h2>Related test results</h2><p class="muted">Statically related test types; not per-test coverage attribution.</p></header><div class="panel-scroll panel-padding">
-                @foreach (var execution in RelatedTests) { <details class="execution"><summary title="@execution.Name">@execution.Outcome · @execution.Name</summary><pre>@execution.Message
-@execution.StackTrace</pre></details> }
-                @if (!RelatedTests.Any()) { <p class="muted">No related test executions resolved.</p> }
-            </div><footer class="panel-footer"><button @onclick="OnVerification">Open verification</button></footer></section> }
-            else
-            { <section class="work-panel"><header class="panel-header"><h2>Formatting</h2><p class="muted">@Evidence.Formatting.Status</p></header><div class="panel-scroll panel-padding">
-                @foreach (var finding in Evidence.FormattingFindings.Where(x => Type.Files.Contains(x.Path))) { <p><strong>@finding.Id</strong> · @finding.Path:@finding.Line<br />@finding.Message</p> }
-            </div></section> }
+    <div class="studio-toolbar">
+        <div class="local-tabs" aria-label="Workspace layout"><button aria-pressed="@(mode == "Explore")" @onclick='() => SetMode("Explore")'>Explore</button><button aria-pressed="@(mode == "Inspect")" disabled="@(test is null)" @onclick='() => SetMode("Inspect")'>Inspect tests</button><button aria-pressed="@(mode == "Focus")" @onclick='() => SetMode("Focus")'>Focus</button></div>
+        <button aria-pressed="@(evidenceTab == "Tests")" @onclick='() => ToggleEvidence("Tests")'>Tests</button><button aria-pressed="@(evidenceTab == "Formatting")" @onclick='() => ToggleEvidence("Formatting")'>Formatting</button>
+        <label class="graph-size" hidden="@(mode != "Explore")">Graph width <input type="range" min="25" max="50" step="1" @bind="graphWidth" @bind:event="oninput" /></label>
+        <button class="mobile-graph-toggle" hidden="@(mode != "Explore")" @onclick="() => mobileGraph = !mobileGraph">@(mobileGraph ? "Show code" : "Show graph")</button>
+    </div>
+    <div class="studio-panes">
+        <aside class="studio-graph" hidden="@(mode != "Explore")">
+            <ReviewRelationships Evidence="Evidence" Type="visit.Type" PreserveNavigation="true" OnType="NavigateType" />
+        </aside>
+        <section class="studio-production" aria-label="Production source">
+            <div class="partial-navigation">
+                <div class="partial-tabs" role="group" aria-label="Type source files">
+                    @foreach (var file in ReviewWorkspaceNavigation.Files(visit.Type))
+                    { <button aria-pressed="@(visit.File == file)" title="@file" @onclick="() => SelectFile(file)"><span class="ellipsis">@System.IO.Path.GetFileName(file)</span><small>@FileChange(file)</small></button> }
+                </div>
+                <div class="partial-selectors">
+                    <label>All files (@ReviewWorkspaceNavigation.Files(visit.Type).Count)<select value="@visit.File" @onchange="e => SelectFile(e.Value?.ToString())">@foreach (var file in ReviewWorkspaceNavigation.Files(visit.Type)) { <option value="@file">@file · @FileChange(file)</option> }</select></label>
+                    <label>Member<select value="@(visit.MemberId ?? "")" @onchange="SelectMember"><option value="">Full file</option>@foreach (var member in visit.Type.Members) { <option value="@member.Id">@member.Name · @System.IO.Path.GetFileName(member.Path) · @member.Change</option> }</select></label>
+                </div>
+            </div>
+            <ReviewSource Evidence="Evidence" Path="@visit.File" InitialLine="@MemberLine(visit)" InitialRevision="@DefaultRevision(visit)" RememberPosition="true" StateKey="@visit.Key" NavigationVersion="@sourceNavigation" />
+            @if (evidenceTab is not null)
+            { <ReviewTypeEvidence Evidence="Evidence" Type="visit.Type" Tab="@evidenceTab" OnTest="OpenTest" OnClose="() => evidenceTab = null" OnVerification="OnVerification" /> }
+        </section>
+        <aside class="studio-test" hidden="@(mode != "Inspect")" aria-label="Test source">
+            <header class="selection-strip"><div class="shrink"><h2 class="ellipsis" title="@test?.Type.FullName">@test?.Type.Name.@test?.Member.Name</h2><small>Test definition · static relationship</small></div><button @onclick="CloseTest">Return to code</button></header>
+            @if (test is not null)
+            { <ReviewSource Evidence="Evidence" Path="@test.Member.Path" InitialLine="@test.Member.Line" InitialRevision="@(test.Member.Change == "Deleted" ? "Baseline" : "Head")" RememberPosition="true" StateKey="@test.Type.Id" /> }
         </aside>
     </div>
 </div>
+}
 @code {
     [Parameter, EditorRequired] public ReviewEvidence Evidence { get; set; } = default!;
     [Parameter, EditorRequired] public TypeEvidence Type { get; set; } = default!;
-    [Parameter] public EventCallback<TypeEvidence> OnType { get; set; }
-    [Parameter] public EventCallback OnVerification { get; set; }
-    [Parameter] public EventCallback<string> OnFile { get; set; }
-    private IEnumerable<TestExecution> RelatedTests
-    {
-        get
-        {
-            var relatedIds = Related.SelectMany(x => new[] { x.From, x.To }).Append(Type.Id).ToHashSet(StringComparer.Ordinal);
-            var names = Evidence.Code.Types.Where(x => relatedIds.Contains(x.Id) && x.Members.Any(m => m.IsTest))
-                .Select(x => x.FullName).Where(name => Evidence.Code.Types.Count(t => t.FullName == name) == 1).ToHashSet(StringComparer.Ordinal);
-            return Evidence.Executions.Where(x => names.Contains(x.ClassName.Split(',')[0]));
-        }
-    }
     [Parameter] public string? InitialMemberId { get; set; }
-    private string? previousMember;
-    private MemberEvidence? member;
-    private string? previousType;
-    private string relatedTab = "Graph";
-    private IEnumerable<CodeRelationship> Related => Evidence.Code.Relationships.Where(x => x.From == Type.Id || x.To == Type.Id).DistinctBy(x => (x.From, x.To, x.Kind, x.Revision));
+    [Parameter] public long NavigationRequest { get; set; }
+    [Parameter] public EventCallback OnVerification { get; set; }
+    private readonly ReviewWorkspaceNavigation navigation = new();
+    private long previousRequest = -1, sourceNavigation;
+    private ReviewTestNavigation.Definition? test;
+    private string mode = "Explore", returnMode = "Explore";
+    private string? evidenceTab;
+    private int graphWidth = 35;
+    private bool mobileGraph;
     protected override void OnParametersSet()
     {
-        if (previousType != Type.Id || previousMember != InitialMemberId)
-        { member = Type.Members.FirstOrDefault(x => x.Id == InitialMemberId) ?? Type.Members.FirstOrDefault(x => x.Change != "Unchanged") ?? Type.Members.FirstOrDefault(); previousType = Type.Id; previousMember = InitialMemberId; }
+        if (previousRequest == NavigationRequest && navigation.Current is not null) { return; }
+        previousRequest = NavigationRequest;
+        navigation.Open(Type, Evidence, InitialMemberId);
+        sourceNavigation++;
     }
+    private void NavigateType(TypeEvidence type) { navigation.Open(type, Evidence); mobileGraph = false; evidenceTab = null; }
+    private void Back() { navigation.Back(); mobileGraph = false; evidenceTab = null; }
+    private void Forward() { navigation.Forward(); mobileGraph = false; evidenceTab = null; }
+    private void SelectFile(string? file)
+    {
+        if (navigation.Current is not { } visit || file is null || !ReviewWorkspaceNavigation.Files(visit.Type).Contains(file)) { return; }
+        visit.File = file; visit.MemberId = null;
+    }
+    private void SelectMember(ChangeEventArgs e)
+    {
+        if (navigation.Current is not { } visit) { return; }
+        var member = visit.Type.Members.FirstOrDefault(x => x.Id == e.Value?.ToString());
+        visit.MemberId = member?.Id;
+        if (member is not null) { visit.File = member.Path; sourceNavigation++; }
+    }
+    private static int? MemberLine(ReviewWorkspaceNavigation.Visit visit) => visit.Type.Members.FirstOrDefault(x => x.Id == visit.MemberId)?.Line;
+    private string DefaultRevision(ReviewWorkspaceNavigation.Visit visit) => visit.Type.Change == "Deleted" || visit.Type.Members.Any(x => x.Id == visit.MemberId && x.Change == "Deleted") ? "Baseline" : FileChange(visit.File) != "Unchanged" ? "Diff" : "Head";
+    private string FileChange(string? path) => Evidence.Files.FirstOrDefault(x => x.Path == path || x.OldPath == path)?.Kind.ToString() ?? "Unchanged";
+    private void ToggleEvidence(string tab)
+    {
+        if (mode == "Inspect") { SetMode("Focus"); }
+        mobileGraph = false; evidenceTab = evidenceTab == tab ? null : tab;
+    }
+    private void SetMode(string value) { mode = value; mobileGraph = false; if (value == "Inspect") { evidenceTab = null; } }
+    private void OpenTest(ReviewTestNavigation.Definition definition)
+    { test = definition; returnMode = mode == "Inspect" ? returnMode : mode; evidenceTab = null; SetMode("Inspect"); }
+    private void CloseTest() => SetMode(returnMode);
 }
