@@ -2,26 +2,29 @@
 @using DD3.CoverScope.Services.Reviews
 @if (navigation.Current is { } visit)
 {
-<div class="type-workspace review-studio @mode.ToLowerInvariant() @(mobileGraph ? "mobile-graph" : null)" style="@($"--graph-share:{graphWidth}%")">
+<div class="type-workspace review-studio @(inspectingTests ? "inspect" : "explore") @(graphCollapsed ? "graph-collapsed" : null) @(mobileGraph ? "mobile-graph" : null)" style="@($"--graph-share:{graphWidth}%")">
     <header class="selection-strip studio-heading">
         <div class="studio-history"><button disabled="@(!navigation.CanGoBack)" @onclick="Back" aria-label="Previous type">← Back</button><button disabled="@(!navigation.CanGoForward)" @onclick="Forward" aria-label="Next type">Forward →</button></div>
         <div class="shrink"><h2 class="ellipsis" title="@visit.Type.FullName">@visit.Type.FullName</h2><p class="muted ellipsis" title="@visit.Type.Project">@visit.Type.Kind · @visit.Type.Change · @visit.Type.Project</p></div>
     </header>
     <div class="studio-toolbar">
-        <div class="local-tabs" aria-label="Workspace layout"><button aria-pressed="@(mode == "Explore")" @onclick='() => SetMode("Explore")'>Explore</button><button aria-pressed="@(mode == "Inspect")" disabled="@(test is null)" @onclick='() => SetMode("Inspect")'>Inspect tests</button><button aria-pressed="@(mode == "Focus")" @onclick='() => SetMode("Focus")'>Focus</button></div>
+        <button aria-pressed="@inspectingTests" disabled="@(test is null)" @onclick="ToggleTestComparison">@(inspectingTests ? "Close test comparison" : "Inspect tests")</button>
         <button aria-pressed="@(evidenceTab == "Tests")" @onclick='() => ToggleEvidence("Tests")'>Tests</button><button aria-pressed="@(evidenceTab == "Formatting")" @onclick='() => ToggleEvidence("Formatting")'>Formatting</button>
-        <label class="graph-size" hidden="@(mode != "Explore")">Graph width <input type="range" min="25" max="50" step="1" @bind="graphWidth" @bind:event="oninput" /></label>
-        <button class="mobile-graph-toggle" hidden="@(mode != "Explore")" @onclick="() => mobileGraph = !mobileGraph">@(mobileGraph ? "Show code" : "Show graph")</button>
+        <label class="graph-size" hidden="@(inspectingTests || graphCollapsed)">Graph width <input type="range" min="25" max="50" step="1" @bind="graphWidth" @bind:event="oninput" /></label>
     </div>
     <div class="studio-panes">
-        <aside class="studio-graph" hidden="@(mode != "Explore")">
+        <div class="graph-rail" hidden="@inspectingTests">
+            <button class="desktop-graph-toggle" aria-expanded="@(!graphCollapsed)" @onclick="() => graphCollapsed = !graphCollapsed" title="@(graphCollapsed ? "Expand graph" : "Collapse graph")"><span aria-hidden="true">@(graphCollapsed ? "→" : "←")</span><span class="rail-label">@(graphCollapsed ? "Expand graph" : "Collapse graph")</span></button>
+            <button class="mobile-graph-toggle" aria-expanded="@mobileGraph" @onclick="() => mobileGraph = !mobileGraph"><span aria-hidden="true">@(mobileGraph ? "←" : "→")</span><span class="rail-label">@(mobileGraph ? "Collapse graph" : "Expand graph")</span></button>
+        </div>
+        <aside class="studio-graph" hidden="@inspectingTests">
             <ReviewRelationships Evidence="Evidence" Type="visit.Type" PreserveNavigation="true" OnType="NavigateType" />
         </aside>
         <section class="studio-production" aria-label="Production source">
             <div class="partial-navigation">
                 <div class="partial-tabs" role="group" aria-label="Type source files">
-                    @foreach (var file in ReviewWorkspaceNavigation.Files(visit.Type))
-                    { <button aria-pressed="@(visit.File == file)" title="@file" @onclick="() => SelectFile(file)"><span class="ellipsis">@System.IO.Path.GetFileName(file)</span><small>@FileChange(file)</small></button> }
+                    @foreach (var file in ReviewWorkspaceNavigation.FileTabs(visit.Type))
+                    { <button aria-pressed="@(visit.File == file.Path)" title="@file.Path" @onclick="() => SelectFile(file.Path)"><span class="ellipsis">@file.Label</span><small>@FileChange(file.Path)</small></button> }
                 </div>
                 <div class="partial-selectors">
                     <label>All files (@ReviewWorkspaceNavigation.Files(visit.Type).Count)<select value="@visit.File" @onchange="e => SelectFile(e.Value?.ToString())">@foreach (var file in ReviewWorkspaceNavigation.Files(visit.Type)) { <option value="@file">@file · @FileChange(file)</option> }</select></label>
@@ -32,7 +35,7 @@
             @if (evidenceTab is not null)
             { <ReviewTypeEvidence Evidence="Evidence" Type="visit.Type" Tab="@evidenceTab" OnTest="OpenTest" OnClose="() => evidenceTab = null" OnVerification="OnVerification" /> }
         </section>
-        <aside class="studio-test" hidden="@(mode != "Inspect")" aria-label="Test source">
+        <aside class="studio-test" hidden="@(!inspectingTests)" aria-label="Test source">
             <header class="selection-strip"><div class="shrink"><h2 class="ellipsis" title="@test?.Type.FullName">@test?.Type.Name.@test?.Member.Name</h2><small>Test definition · static relationship</small></div><button @onclick="CloseTest">Return to code</button></header>
             @if (test is not null)
             { <ReviewSource Evidence="Evidence" Path="@test.Member.Path" InitialLine="@test.Member.Line" InitialRevision="@(test.Member.Change == "Deleted" ? "Baseline" : "Head")" RememberPosition="true" StateKey="@test.Type.Id" NavigationVersion="@testNavigation" /> }
@@ -49,7 +52,7 @@
     private readonly ReviewWorkspaceNavigation navigation = new();
     private long previousRequest = -1, sourceNavigation, testNavigation;
     private ReviewTestNavigation.Definition? test;
-    private string mode = "Explore", returnMode = "Explore";
+    private bool inspectingTests, graphCollapsed;
     private string? evidenceTab;
     private int graphWidth = 35;
     private bool mobileGraph;
@@ -80,11 +83,11 @@
     private string FileChange(string? path) => Evidence.Files.FirstOrDefault(x => x.Path == path || x.OldPath == path)?.Kind.ToString() ?? "Unchanged";
     private void ToggleEvidence(string tab)
     {
-        if (mode == "Inspect") { SetMode("Focus"); }
+        inspectingTests = false;
         mobileGraph = false; evidenceTab = evidenceTab == tab ? null : tab;
     }
-    private void SetMode(string value) { mode = value; mobileGraph = false; if (value == "Inspect") { evidenceTab = null; } }
+    private void ToggleTestComparison() { inspectingTests = !inspectingTests; mobileGraph = false; if (inspectingTests) { evidenceTab = null; } }
     private void OpenTest(ReviewTestNavigation.Definition definition)
-    { test = definition; testNavigation++; returnMode = mode == "Inspect" ? returnMode : mode; evidenceTab = null; SetMode("Inspect"); }
-    private void CloseTest() => SetMode(returnMode);
+    { test = definition; testNavigation++; evidenceTab = null; mobileGraph = false; inspectingTests = true; }
+    private void CloseTest() => inspectingTests = false;
 }
