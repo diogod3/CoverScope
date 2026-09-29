@@ -34,6 +34,7 @@ source.visible=false; observers[2].fn(); source.scrollTop=0; source.scrollLeft=0
 assert.deepEqual(api.readSourcePosition(source),{top:170,left:35});
 source.visible=true; observers[2].fn(); assert.equal(source.scrollTop,170); assert.equal(source.scrollLeft,35);
 source.visible=false; observers[2].fn(); api.scrollSource(source,10);
+assert.equal(api.readSourcePosition(source),null);
 source.visible=true; observers[2].fn(); assert.equal(source.scrollTop,252); assert.equal(source.scrollLeft,0);
 source.visible=false; observers[2].fn(); api.restoreSourcePosition(source,{top:410,left:50}); source.scrollTop=0;
 source.visible=true; observers[2].fn(); assert.equal(source.scrollTop,410); assert.equal(source.scrollLeft,50);
