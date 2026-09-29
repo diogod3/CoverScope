@@ -1,6 +1,7 @@
 @using DD3.CoverScope.Models.Reviews
 @using DD3.CoverScope.Services.Reviews
 @inject IJSRuntime JS
+@implements IAsyncDisposable
 <section class="work-panel source-work-panel">
     <header class="panel-header">
         <div class="title-row"><div class="shrink"><h2 class="ellipsis" title="@Path">@(Path is null ? "Source explorer" : System.IO.Path.GetFileName(Path))</h2><p class="muted ellipsis" title="@Path">@Path</p></div>
@@ -61,6 +62,27 @@
     [Parameter] public string InitialRevision { get; set; } = "Head";
     [Parameter] public CoverageEvidence? Coverage { get; set; }
     [Parameter] public bool ChangedLinesOnly { get; set; }
+    [Parameter] public bool RememberPosition { get; set; }
+    [Parameter] public string StateKey { get; set; } = "";
+    [Parameter] public long NavigationVersion { get; set; }
+    public sealed class SourcePosition
+    {
+        public double Top { get; set; }
+        public double Left { get; set; }
+        public int? TargetLine { get; set; }
+    }
+    private sealed class FileMemory(string revision)
+    {
+        public string Revision = revision;
+        public Dictionary<string, SourcePosition> Positions { get; } = [];
+    }
+    private readonly Dictionary<(string, string?), FileMemory> memories = [];
+    private FileMemory? memory;
+    private SourcePosition? restorePosition;
+    private string? previousStateKey;
+    private long previousNavigation;
+    private int loadVersion;
+    private bool rendered;
     private string revision = "Head";
     private string? previousPath, previousRevision, source;
     private ReviewEvidence? previousEvidence;
@@ -75,14 +97,40 @@
     private List<ReviewDiffPresentation.Line> rows = [];
     private Dictionary<int, CoverageLineEvidence> details = [];
     private HashSet<int> covered = [], executable = [];
-    protected override void OnParametersSet()
+    protected override async Task OnParametersSetAsync()
     {
-        if (previousPath == Path && previousRevision == InitialRevision && previousLine == InitialLine && previousChangedLinesOnly == ChangedLinesOnly && ReferenceEquals(previousEvidence, Evidence) && ReferenceEquals(previousCoverage, Coverage)) { return; }
-        revision = ChangedLinesOnly ? "Head" : InitialRevision;
+        if (previousPath == Path && previousStateKey == StateKey && previousNavigation == NavigationVersion && previousRevision == InitialRevision && previousLine == InitialLine && previousChangedLinesOnly == ChangedLinesOnly && ReferenceEquals(previousEvidence, Evidence) && ReferenceEquals(previousCoverage, Coverage)) { return; }
+        var version = ++loadVersion;
+        await CapturePosition();
+        if (version != loadVersion) { return; }
+        if (!ReferenceEquals(previousEvidence, Evidence)) { memories.Clear(); }
+        var explicitJump = InitialLine.HasValue && (NavigationVersion != previousNavigation || (previousPath == Path && previousStateKey == StateKey && previousLine != InitialLine));
+        if (RememberPosition && !ChangedLinesOnly)
+        {
+            if (!memories.TryGetValue((StateKey, Path), out memory))
+            { memory = new(InitialRevision); memories[(StateKey, Path)] = memory; }
+            revision = explicitJump ? InitialRevision : memory.Revision;
+            memory.Revision = revision;
+        }
+        else { memory = null; revision = ChangedLinesOnly ? "Head" : InitialRevision; }
         previousChangedLinesOnly = ChangedLinesOnly;
         previousPath = Path; previousRevision = InitialRevision; previousLine = InitialLine; previousEvidence = Evidence; previousCoverage = Coverage;
+        previousStateKey = StateKey; previousNavigation = NavigationVersion;
         jumpLine = InitialLine ?? 1; targetLine = InitialLine;
+        restorePosition = explicitJump ? null : memory?.Positions.GetValueOrDefault(revision);
+        if (restorePosition is not null) { targetLine = restorePosition.TargetLine; }
         Load();
+    }
+    private async Task CapturePosition()
+    {
+        if (!rendered || memory is null) { return; }
+        var destination = memory; var savedRevision = revision; var savedTarget = targetLine;
+        try
+        {
+            var position = await JS.InvokeAsync<SourcePosition?>("CoverScopeReview.readSourcePosition", scroller);
+            if (position is not null) { position.TargetLine = savedTarget; destination.Positions[savedRevision] = position; }
+        }
+        catch (JSDisconnectedException) { }
     }
     private void Load()
     {
@@ -114,18 +162,33 @@
         }
         scrollPending = true;
     }
-    private void ChangeRevision(string value) { revision = value; jumpLine = 1; targetLine = null; Load(); }
+    private async Task ChangeRevision(string value)
+    {
+        var version = ++loadVersion;
+        await CapturePosition();
+        if (version != loadVersion) { return; }
+        revision = value;
+        if (memory is not null) { memory.Revision = value; }
+        restorePosition = memory?.Positions.GetValueOrDefault(value);
+        jumpLine = 1; targetLine = restorePosition?.TargetLine; Load();
+    }
     private void Jump()
     {
         jumpLine = Math.Clamp(jumpLine, 1, Math.Max(1, sourceLineCount));
         if (ChangedLinesOnly) { jumpLine = rows.Where(x => x.Number > 0).OrderBy(x => Math.Abs(x.Number - jumpLine)).Select(x => x.Number).FirstOrDefault(jumpLine); }
-        targetLine = jumpLine; scrollPending = true;
+        targetLine = jumpLine; restorePosition = null; scrollPending = true;
     }
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {
+        if (firstRender) { try { await JS.InvokeVoidAsync("CoverScopeReview.trackSource", scroller); } catch (JSDisconnectedException) { } }
+        rendered = true;
         if (!scrollPending) { return; }
         scrollPending = false;
-        try { await JS.InvokeVoidAsync("CoverScopeReview.scrollSource", scroller, jumpLine); }
+        try
+        {
+            if (restorePosition is not null) { await JS.InvokeVoidAsync("CoverScopeReview.restoreSourcePosition", scroller, restorePosition); }
+            else { await JS.InvokeVoidAsync("CoverScopeReview.scrollSource", scroller, jumpLine); }
+        }
         catch (JSDisconnectedException) { }
     }
     private string CoverageState(int number)
@@ -145,6 +208,13 @@
         var label = state == "partial" ? "Covered line; partially covered branches" : state == "covered" ? "Covered" : "Uncovered";
         return detail is null ? label + "; hit and branch details were not recorded."
             : $"{label} · {detail.Hits} hits" + (detail.BranchesTotal > 0 ? $" · {detail.BranchesCovered}/{detail.BranchesTotal} branches" : "");
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        loadVersion++;
+        if (!rendered) { return; }
+        try { await JS.InvokeVoidAsync("CoverScopeReview.untrackSource", scroller); } catch (JSDisconnectedException) { }
     }
 
 }

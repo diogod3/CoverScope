@@ -41,6 +41,8 @@
         }
         state.center = (x, y) => {
             const rect = size();
+            if (!rect.width || !rect.height) { state.pendingCenter = { x, y }; return; }
+            state.pendingCenter = null;
             state.scale = 1;
             state.x = x - rect.width / 2;
             state.y = y - rect.height / 2;
@@ -75,6 +77,7 @@
         };
         const listen = (name, handler, options = {}) => svg.addEventListener(name, handler, { ...options, signal: controller.signal });
         listen('wheel', event => {
+            if (!event.altKey) return;
             event.preventDefault();
             const rect = size();
             const delta = event.deltaY * (event.deltaMode === 1 ? 16 : event.deltaMode === 2 ? rect.height : 1);
@@ -117,20 +120,67 @@
             } else return;
             event.preventDefault();
         });
-        state.observer = new ResizeObserver(() => state.fitted ? fit() : render());
+        state.observer = new ResizeObserver(() => {
+            if (state.pendingCenter) state.center(state.pendingCenter.x, state.pendingCenter.y);
+            else if (state.fitted) fit();
+            else render();
+        });
         graphs.set(svg, state);
         state.observer.observe(svg);
         const focusX = Number(svg.dataset.focusX), focusY = Number(svg.dataset.focusY);
         if (svg.dataset.focusX && svg.dataset.focusY && Number.isFinite(focusX) && Number.isFinite(focusY)) state.center(focusX, focusY);
         else fit();
     }
+    const sourcePositions = new WeakMap();
+    const sourceTrackers = new WeakMap();
+    const sourceJumps = new WeakMap();
+    function scrollSource(element, line) {
+        if (!element.getClientRects().length) { sourceJumps.set(element, line); return; }
+        const rows = Array.from(element.querySelectorAll('[data-source-line]'));
+        const row = rows.find(row => Number(row.dataset.sourceLine) >= Number(line)) ?? rows.at(-1);
+        element.scrollTop = row ? Math.max(0, element.scrollTop + row.getBoundingClientRect().top - element.getBoundingClientRect().top - 48) : 0;
+        element.scrollLeft = 0;
+        sourcePositions.set(element, { top: element.scrollTop, left: element.scrollLeft });
+        sourceJumps.delete(element);
+    }
     window.CoverScopeReview = {
-        scrollSource(element, line) {
-            const rows = Array.from(element.querySelectorAll('[data-source-line]'));
-            const row = rows.find(row => Number(row.dataset.sourceLine) >= Number(line)) ?? rows.at(-1);
-            element.scrollTop = row ? Math.max(0, element.scrollTop + row.getBoundingClientRect().top - element.getBoundingClientRect().top - 48) : 0;
-            element.scrollLeft = 0;
+        trackSource(element) {
+            if (sourceTrackers.has(element)) return;
+            const controller = new AbortController();
+            let visible = !!element.getClientRects().length;
+            element.addEventListener('scroll', () => {
+                if (element.getClientRects().length) sourcePositions.set(element, { top: element.scrollTop, left: element.scrollLeft });
+            }, { signal: controller.signal, passive: true });
+            const observer = new ResizeObserver(() => {
+                const next = !!element.getClientRects().length;
+                const saved = sourcePositions.get(element);
+                if (next && !visible) {
+                    if (sourceJumps.has(element)) scrollSource(element, sourceJumps.get(element));
+                    else if (saved) { element.scrollTop = saved.top; element.scrollLeft = saved.left; }
+                }
+                visible = next;
+            });
+            observer.observe(element);
+            sourceTrackers.set(element, { controller, observer });
         },
+        untrackSource(element) {
+            const tracker = sourceTrackers.get(element);
+            tracker?.controller.abort(); tracker?.observer.disconnect();
+            sourceTrackers.delete(element); sourcePositions.delete(element); sourceJumps.delete(element);
+        },
+        readSourcePosition(element) {
+            if (!element.getClientRects().length) return sourcePositions.get(element) ?? null;
+            const position = { top: element.scrollTop, left: element.scrollLeft };
+            sourcePositions.set(element, position);
+            return position;
+        },
+        restoreSourcePosition(element, position) {
+            sourceJumps.delete(element);
+            element.scrollTop = position.top;
+            element.scrollLeft = position.left;
+            sourcePositions.set(element, position);
+        },
+        scrollSource,
         graph: {
             attach, detach,
             transform(svg, action) { graphs.get(svg)?.transform(action); },

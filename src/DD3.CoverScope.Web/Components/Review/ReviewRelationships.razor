@@ -24,7 +24,7 @@
     </header>
     <div class="graph-workspace @(inspectorOpen ? "details-open" : null)">
     <div class="graph-canvas">
-        <svg @ref="canvas" class="relationship-canvas" role="group" aria-label="Interactive branch relationship graph. Drag to pan; use the wheel or buttons to zoom. Select a node to inspect it." tabindex="0" viewBox="@($"0 0 {graph.Width} {graph.Height}")" data-graph-width="@graph.Width" data-graph-height="@graph.Height" data-focus-x="@(FocusNode?.X + 120)" data-focus-y="@(FocusNode?.Y + 34)">
+        <svg @ref="canvas" class="relationship-canvas" role="group" aria-label="Interactive branch relationship graph. Drag to pan; hold Alt and use the wheel, or use the buttons, to zoom. Select a node to inspect it." tabindex="0" viewBox="@($"0 0 {graph.Width} {graph.Height}")" data-graph-width="@graph.Width" data-graph-height="@graph.Height" data-focus-x="@(FocusNode?.X + 120)" data-focus-y="@(FocusNode?.Y + 34)">
             <defs><marker id="@arrowId" markerWidth="9" markerHeight="9" refX="8" refY="4" orient="auto" markerUnits="userSpaceOnUse"><path d="M0,0 L8,4 L0,8 Z" fill="#a89cdd" /></marker></defs>
             <g class="graph-world">
                 @foreach (var group in graph.Groups)
@@ -48,7 +48,7 @@
                 }
                 @foreach (var node in nodes)
                 {
-                    <g data-node="true" class="graph-node @(IsTestType(node.Type) ? "test-node" : null) @node.Type.Change.ToLowerInvariant() @(selectedNode?.Id == node.Type.Id ? "selected" : null) @(ConnectedToSelection(node.Type.Id) ? "" : "subdued") @(matchIds.Contains(node.Type.Id) ? "search-match" : null) @(activeMatch >= 0 && matches[activeMatch].Type.Id == node.Type.Id ? "current-match" : null)" transform="@($"translate({node.X} {node.Y})")" role="button" tabindex="0" aria-label="@(node.Type.FullName + ", " + NodeCaption(node.Type))" @onclick="() => SelectNodeClick(node.Type)" @ondblclick="() => OpenType(node.Type)" @onkeydown="e => SelectNodeKey(e, node.Type)">
+                    <g data-node="true" class="graph-node @(Type?.Id == node.Type.Id ? "opened-type" : null) @(IsTestType(node.Type) ? "test-node" : null) @node.Type.Change.ToLowerInvariant() @(selectedNode?.Id == node.Type.Id ? "selected" : null) @(ConnectedToSelection(node.Type.Id) ? "" : "subdued") @(matchIds.Contains(node.Type.Id) ? "search-match" : null) @(activeMatch >= 0 && matches[activeMatch].Type.Id == node.Type.Id ? "current-match" : null)" transform="@($"translate({node.X} {node.Y})")" role="button" tabindex="0" aria-label="@(node.Type.FullName + ", " + NodeCaption(node.Type))" @onclick="() => SelectNodeClick(node.Type)" @ondblclick="() => OpenType(node.Type)" @onkeydown="e => SelectNodeKey(e, node.Type)">
                         <title>@node.Type.FullName · @node.Type.Project · @NodeCaption(node.Type) · @node.Connections connected types · Double-click to open type</title>
                         <rect width="240" height="68" rx="9" /><text x="14" y="27">@Short(node.Type.Name, 28)</text><text class="node-caption" x="14" y="49">@NodeCaption(node.Type)</text>
                         @if (IsTestType(node.Type)) { <rect class="test-outline" x="5" y="5" width="230" height="58" rx="6" /> }
@@ -81,11 +81,12 @@
         }
     </aside>
     </div>
-    <footer class="panel-footer"><span>Arrow: referencing → referenced type. Green: added relationship · Dashed red: removed · Grey: retained.</span><span class="muted">Drag to pan · Wheel to zoom · Double-click a node to open its type. Double outline: Tests. Static references do not establish runtime impact.</span></footer>
+    <footer class="panel-footer"><span>Arrow: referencing → referenced type. Green: added relationship · Dashed red: removed · Grey: retained.</span><span class="muted">Drag to pan · Alt + wheel to zoom · Double-click a node to open its type. Double outline: Tests. Static references do not establish runtime impact.</span></footer>
 </section>
 @code {
     [Parameter, EditorRequired] public ReviewEvidence Evidence { get; set; } = default!;
     [Parameter] public TypeEvidence? Type { get; set; }
+    [Parameter] public bool PreserveNavigation { get; set; }
     [Parameter] public EventCallback<TypeEvidence> OnType { get; set; }
     private readonly string arrowId = "relation-arrow-" + Guid.NewGuid().ToString("N");
     private ElementReference canvas, inspector;
@@ -110,6 +111,15 @@
     protected override void OnParametersSet()
     {
         if (previousType == Type?.Id && ReferenceEquals(previousEvidence, Evidence)) { return; }
+        if (PreserveNavigation && ReferenceEquals(previousEvidence, Evidence))
+        {
+            previousType = Type?.Id;
+            selectionVersion++;
+            selectedNode = nodeIndex.GetValueOrDefault(Type?.Id ?? "")?.Type;
+            selectedEdge = null;
+            inspectPending = false;
+            return;
+        }
         previousType = Type?.Id; previousEvidence = Evidence;
         revision = "Comparison";
         inspectorOpen = false;
