@@ -37,6 +37,9 @@ jobs:
       - name: Build
         run: dotnet build DD3.CoverScope.sln --configuration Release --no-restore
 
+      - name: Check workspace interactions
+        run: node scripts/Test-ReviewWorkspace.cjs
+
       - name: Test
         run: dotnet test DD3.CoverScope.sln --configuration Release --no-build
 

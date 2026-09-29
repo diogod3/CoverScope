@@ -35,7 +35,7 @@
         <aside class="studio-test" hidden="@(mode != "Inspect")" aria-label="Test source">
             <header class="selection-strip"><div class="shrink"><h2 class="ellipsis" title="@test?.Type.FullName">@test?.Type.Name.@test?.Member.Name</h2><small>Test definition · static relationship</small></div><button @onclick="CloseTest">Return to code</button></header>
             @if (test is not null)
-            { <ReviewSource Evidence="Evidence" Path="@test.Member.Path" InitialLine="@test.Member.Line" InitialRevision="@(test.Member.Change == "Deleted" ? "Baseline" : "Head")" RememberPosition="true" StateKey="@test.Type.Id" /> }
+            { <ReviewSource Evidence="Evidence" Path="@test.Member.Path" InitialLine="@test.Member.Line" InitialRevision="@(test.Member.Change == "Deleted" ? "Baseline" : "Head")" RememberPosition="true" StateKey="@test.Type.Id" NavigationVersion="@testNavigation" /> }
         </aside>
     </div>
 </div>
@@ -47,7 +47,7 @@
     [Parameter] public long NavigationRequest { get; set; }
     [Parameter] public EventCallback OnVerification { get; set; }
     private readonly ReviewWorkspaceNavigation navigation = new();
-    private long previousRequest = -1, sourceNavigation;
+    private long previousRequest = -1, sourceNavigation, testNavigation;
     private ReviewTestNavigation.Definition? test;
     private string mode = "Explore", returnMode = "Explore";
     private string? evidenceTab;
@@ -85,6 +85,6 @@
     }
     private void SetMode(string value) { mode = value; mobileGraph = false; if (value == "Inspect") { evidenceTab = null; } }
     private void OpenTest(ReviewTestNavigation.Definition definition)
-    { test = definition; returnMode = mode == "Inspect" ? returnMode : mode; evidenceTab = null; SetMode("Inspect"); }
+    { test = definition; testNavigation++; returnMode = mode == "Inspect" ? returnMode : mode; evidenceTab = null; SetMode("Inspect"); }
     private void CloseTest() => SetMode(returnMode);
 }
