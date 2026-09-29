@@ -169,6 +169,9 @@
             sourceTrackers.delete(element); sourcePositions.delete(element); sourceJumps.delete(element);
         },
         readSourcePosition(element) {
+            // A hidden pane may still be waiting to position newly selected source.
+            // Its cached offset belongs to the previous file until that jump runs.
+            if (sourceJumps.has(element)) return null;
             if (!element.getClientRects().length) return sourcePositions.get(element) ?? null;
             const position = { top: element.scrollTop, left: element.scrollLeft };
             sourcePositions.set(element, position);
