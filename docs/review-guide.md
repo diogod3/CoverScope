@@ -1,6 +1,6 @@
 # Review guide
 
-Detailed guidance for CoverScope `0.2.0-beta.2`. See the [README](../README.md) for an introduction and installation.
+Detailed guidance for CoverScope `0.2.0-beta.3`. See the [README](../README.md) for an introduction and installation.
 
 ## Requirements
 
@@ -34,18 +34,26 @@ CoverScope checks for staged, unstaged, unmerged, and untracked changes. Ignored
 
 ### Overview and source
 
-**Overview** shows change counts, verification results, the relationship graph, and changed types. The adjacent graph and type panels share a height, with the type list scrolling internally.
+**Overview** shows change counts, verification results, and a full-width relationship graph. Select **Show changed types list** to display the optional type list beside the graph.
 
 **Changes** provides a searchable hierarchy and a shared source pane. Opening a changed file defaults to **Diff**; **Reviewed** and **Baseline** views show the captured full file. Selecting a member opens its file at the relevant line. Partial declarations appear as one logical type with their source files.
 
 The diff hides raw Git metadata, separates distant changed sections, and shows baseline/reviewed line numbers. Added and removed code has green/red background highlighting limited to the code area. The neutral gutter shows coverage separately: **● covered**, **○ uncovered**, and **◐ partial branches**. Hover for recorded hits and branch details. Removed lines have no reviewed coverage; an empty coverage gutter does not mean a line is uncovered.
+
+### Type review workspace
+
+Opening a type brings its source and graph into one workspace. Collapse the graph into its left rail to give the code more width; expand it to restore the graph with its position, zoom, filters, and width. On narrow screens, the rail switches between graph and code. **Back** and **Forward** revisit types without losing their source context. Use the **Review** navigation entry to return after checking Overview, Changes, or Verification.
+
+Partial-file tabs remember the revision and scroll position for each visit. The main `TypeName.cs` file appears first; conventional partial names such as `TypeName.Validations.cs` show **Validations**. Full paths remain in tooltips, and duplicate labels retain paths to distinguish them.
+
+Select **Tests** to inspect statically related test definitions and executions. Opening a definition shows its captured source beside production code, or in place of it on narrow screens. **Return to code** closes the comparison; **Inspect tests** reopens it. Parameterized executions share a definition. Ambiguous execution mappings do not create a source link. These relationships do not identify which tests exercised a particular line.
 
 ### Relationship graph
 
 - **Changed objects only** is enabled by default. Turn it off to include related unchanged types and their interface/implementation groups.
 - **Show tests** is enabled by default. Turn it off to hide types with indexed test definitions and their relationships. Helpers without test definitions remain visible.
 - **Find class or interface** highlights visible matches by name or namespace, ignoring case. Typing leaves the camera in place. Use **Next**/**Previous** (or Enter/Shift+Enter) to center on a match; **Clear** or Escape removes the highlights. Search follows the active type filters.
-- Pan, zoom, use **Fit all**, or center the selected type. The graph initially centers on the type with the most distinct connections in the displayed graph. Selecting a node does not replace the graph.
+- Drag to pan; use **Alt + wheel** or the zoom buttons to zoom. Ordinary wheel scrolling does not zoom the graph. Use **Fit all** or center the selected type. The graph initially centers on the type with the most distinct connections in the displayed graph. Selecting a node does not replace the graph.
 - Single-click a node to show its side-panel details; double-click to open its type. Keyboard selection and the side panel's **Open type** button are also available.
 - Interfaces and implementations are grouped while retaining separate nodes and exact relationship endpoints. A concrete reference points to that concrete type; an interface reference is not rewritten into an assumed dependency-injection binding.
 - Types containing recorded test definitions have a double outline and a **Tests** caption. Change-status colours remain separate from that distinction.
