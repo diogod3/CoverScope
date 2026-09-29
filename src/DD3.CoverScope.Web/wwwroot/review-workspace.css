@@ -226,7 +226,7 @@ button:focus-visible, summary:focus-visible, .panel-scroll:focus-visible { outli
 
 /* The review studio keeps navigation and source together, with deliberate layouts. */
 .type-review-host { min-width:0; }
-.type-review-host[hidden], .studio-graph[hidden], .studio-test[hidden], .overview-types[hidden], .graph-size[hidden], .mobile-graph-toggle[hidden] { display:none; }
+.type-review-host[hidden], .studio-graph[hidden], .studio-test[hidden], .overview-types[hidden], .graph-size[hidden], .graph-rail[hidden] { display:none; }
 .overview-details { grid-template-columns:minmax(0,1fr); }
 .overview-details.with-types { grid-template-columns:minmax(0,1.4fr) minmax(360px,1fr); }
 .review-studio { gap:10px; }
@@ -238,8 +238,12 @@ button:focus-visible, summary:focus-visible, .panel-scroll:focus-visible { outli
 .studio-toolbar button { padding:6px 10px; }
 .graph-size { display:flex; align-items:center; gap:8px; margin-left:auto; font-size:11px; }
 .graph-size input { width:100px; padding:0; }
-.studio-panes { display:grid; grid-template-columns:minmax(360px,var(--graph-share)) minmax(0,1fr); gap:12px; height:max(760px,calc(100dvh - 270px)); }
-.review-studio.focus .studio-panes { grid-template-columns:minmax(0,1fr); }
+.studio-panes { display:grid; grid-template-columns:40px minmax(360px,var(--graph-share)) minmax(0,1fr); gap:12px; height:max(760px,calc(100dvh - 270px)); }
+.review-studio.explore.graph-collapsed .studio-panes { grid-template-columns:40px minmax(0,1fr); }
+.review-studio.explore.graph-collapsed .studio-graph { display:none; }
+.graph-rail { display:flex; min-width:0; }
+.graph-rail button { width:40px; padding:10px 4px; display:flex; flex-direction:column; align-items:center; gap:10px; }
+.graph-rail .rail-label { writing-mode:vertical-rl; }
 .review-studio.inspect .studio-panes { grid-template-columns:minmax(0,1fr) minmax(0,1fr); }
 .studio-graph, .studio-production, .studio-test { display:flex; flex-direction:column; min-width:0; min-height:0; gap:8px; }
 .studio-graph > .graph-panel { flex:1; min-height:0; }
@@ -260,14 +264,16 @@ button:focus-visible, summary:focus-visible, .panel-scroll:focus-visible { outli
 .type-evidence .panel-header { padding:8px 12px; }
 .type-evidence .panel-header h2 { margin:0; }
 .graph-node.opened-type > rect:first-of-type { stroke:#c9a5fa; stroke-width:3; }
-.mobile-graph-toggle { display:none; }
+.graph-rail .mobile-graph-toggle { display:none; }
 @media(max-width:1100px) {
-    .studio-panes, .review-studio.inspect .studio-panes, .overview-details.with-types { grid-template-columns:minmax(0,1fr); }
+    .studio-panes, .review-studio.explore.graph-collapsed .studio-panes { grid-template-columns:40px minmax(0,1fr); }
+    .review-studio.inspect .studio-panes, .overview-details.with-types { grid-template-columns:minmax(0,1fr); }
     .review-studio.explore .studio-graph, .review-studio.inspect .studio-production { display:none; }
-    .review-studio.explore.mobile-graph .studio-graph { display:flex; }
+    .review-studio.explore.mobile-graph .studio-graph, .review-studio.explore.graph-collapsed.mobile-graph .studio-graph { display:flex; }
     .review-studio.explore.mobile-graph .studio-production { display:none; }
     .graph-size { display:none; }
-    .mobile-graph-toggle { display:block; }
+    .graph-rail .desktop-graph-toggle { display:none; }
+    .graph-rail .mobile-graph-toggle { display:flex; }
     .overview-types { contain:none; min-height:320px; max-height:640px; }
 }
 @media(max-width:600px) {

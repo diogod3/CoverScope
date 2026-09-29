@@ -33,5 +33,20 @@ public sealed class ReviewWorkspaceNavigation
     }
     public void Back() { if (CanGoBack) { index--; } }
     public void Forward() { if (CanGoForward) { index++; } }
-    public static IReadOnlyList<string> Files(TypeEvidence type) => type.Files.Concat(type.Members.Select(x => x.Path)).Distinct(StringComparer.Ordinal).Order(StringComparer.Ordinal).ToArray();
+    public sealed record FileTab(string Path, string Label);
+    public static IReadOnlyList<string> Files(TypeEvidence type) => FileTabs(type).Select(x => x.Path).ToArray();
+    public static IReadOnlyList<FileTab> FileTabs(TypeEvidence type)
+    {
+        var files = type.Files.Concat(type.Members.Select(x => x.Path)).Distinct(StringComparer.Ordinal)
+            .Select(path =>
+            {
+                var name = path.Replace('\\', '/').Split('/')[^1];
+                var main = name == type.Name + ".cs";
+                var partial = name.StartsWith(type.Name + ".", StringComparison.Ordinal) && name.EndsWith(".cs", StringComparison.Ordinal);
+                var label = main ? type.Name : partial ? name[(type.Name.Length + 1)..^3] : name;
+                return new { Path = path, Label = label, Order = main ? 0 : partial ? 1 : 2 };
+            }).OrderBy(x => x.Order).ThenBy(x => x.Label, StringComparer.Ordinal).ThenBy(x => x.Path, StringComparer.Ordinal).ToArray();
+        var duplicateLabels = files.GroupBy(x => x.Label, StringComparer.Ordinal).Where(x => x.Count() > 1).Select(x => x.Key).ToHashSet(StringComparer.Ordinal);
+        return files.Select(x => new FileTab(x.Path, duplicateLabels.Contains(x.Label) ? x.Path : x.Label)).ToArray();
+    }
 }
